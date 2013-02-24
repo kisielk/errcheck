@@ -19,6 +19,10 @@ func (x t) a() error {
 	return nil
 }
 
+type u struct {
+	t t
+}
+
 func main() {
 	// Single error return
 	_ = a()
@@ -32,4 +36,9 @@ func main() {
 	x := t{}
 	_ = x.a()
 	x.a()
+
+	// Method call on a struct member
+	y := u{x}
+	_ = y.t.a()
+	y.t.a()
 }
