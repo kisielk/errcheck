@@ -12,9 +12,24 @@ func b() (int, error) {
 	return 0, nil
 }
 
+type t struct{}
+
+func (x t) a() error {
+	fmt.Println("this method returns an error")
+	return nil
+}
+
 func main() {
+	// Single error return
 	_ = a()
 	a()
+
+	// Return another value and an error
 	_, _ = b()
 	b()
+
+	// Method with a single error return
+	x := t{}
+	_ = x.a()
+	x.a()
 }
