@@ -12,17 +12,6 @@ func b() (int, error) {
 	return 0, nil
 }
 
-type t struct{}
-
-func (x t) a() error {
-	fmt.Println("this method returns an error")
-	return nil
-}
-
-type u struct {
-	t t
-}
-
 func main() {
 	// Single error return
 	_ = a()

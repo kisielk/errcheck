@@ -31,20 +31,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, fileName := range pkg.GoFiles {
-		filePath := filepath.Join(pkg.Dir, fileName)
-		if err := checkFile(filePath); err != nil {
-			Err("could not check %s: %s", filePath, err)
-		}
+	files := make([]string, len(pkg.GoFiles))
+	for i, fileName := range pkg.GoFiles {
+		files[i] = filepath.Join(pkg.Dir, fileName)
+	}
+
+	if err := checkFiles(files); err != nil {
+		Err("failed to check package: %s", err)
+		os.Exit(1)
 	}
 }
 
-func checkFile(fileName string) error {
+func checkFiles(fileNames []string) error {
 	fset := token.NewFileSet()
 
-	astFile, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
-	if err != nil {
-		return fmt.Errorf("could not parse: %s", err)
+	astFiles := make([]*ast.File, len(fileNames))
+	for i, fileName := range fileNames {
+		astFile, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
+		if err != nil {
+			return fmt.Errorf("could not parse: %s", err)
+		}
+		astFiles[i] = astFile
 	}
 
 	callTypes := make(map[*ast.CallExpr]types.Type)
@@ -59,8 +66,7 @@ func checkFile(fileName string) error {
 	context := types.Context{
 		Expr: exprFn,
 	}
-	_, err = context.Check(fset, []*ast.File{astFile})
-	if err != nil {
+	if _, err := context.Check(fset, astFiles); err != nil {
 		return err
 	}
 
@@ -117,7 +123,9 @@ func checkFile(fileName string) error {
 		}
 	}
 
-	ast.Walk(visitorFunc(visitor), astFile)
+	for _, astFile := range astFiles {
+		ast.Walk(visitorFunc(visitor), astFile)
+	}
 	//	ast.Fprint(os.Stderr, fset, astFile, nil)
 
 	return nil
