@@ -12,24 +12,29 @@ import (
 	"path/filepath"
 )
 
+func Err(s string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "error:"+s+"\n", args...)
+}
+
 func main() {
 	flag.Parse()
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
-		fmt.Fprintln(os.Stderr, "you must specify a package")
+		Err("you must specify a package")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	pkg, err := build.Import(pkgName, ".", 0)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not import %s: %s", pkgName, err)
+		Err("could not import %s: %s", pkgName, err)
+		os.Exit(1)
 	}
 
 	for _, fileName := range pkg.GoFiles {
 		filePath := filepath.Join(pkg.Dir, fileName)
 		if err := checkFile(filePath); err != nil {
-			fmt.Fprintln(os.Stderr, "could not check %s: %s", filePath, err)
+			Err("could not check %s: %s", filePath, err)
 		}
 	}
 }
@@ -108,12 +113,12 @@ func checkFile(fileName string) error {
 		}
 
 		if unchecked {
-			fmt.Fprintf(os.Stderr, "%s\n", fset.Position(fun.NamePos))
+			fmt.Fprintf(os.Stdout, "%s\n", fset.Position(fun.NamePos))
 		}
 	}
 
 	ast.Walk(visitorFunc(visitor), astFile)
-	ast.Fprint(os.Stderr, fset, astFile, nil)
+	//	ast.Fprint(os.Stderr, fset, astFile, nil)
 
 	return nil
 }
