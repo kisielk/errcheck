@@ -73,8 +73,9 @@ func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
 	return f, nil
 }
 
-func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]types.Type, error) {
+func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]types.Type, map[*ast.Ident]types.Object, error) {
 	callTypes := make(map[*ast.CallExpr]types.Type)
+	identObjs := make(map[*ast.Ident]types.Object)
 
 	exprFn := func(x ast.Expr, typ types.Type, val interface{}) {
 		call, ok := x.(*ast.CallExpr)
@@ -83,17 +84,22 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 		}
 		callTypes[call] = typ
 	}
+	identFn := func(id *ast.Ident, obj types.Object) {
+		identObjs[id] = obj
+	}
 	context := types.Context{
-		Expr: exprFn,
+		Expr:  exprFn,
+		Ident: identFn,
 	}
 	_, err := context.Check(fset, astFiles)
-	return callTypes, err
+	return callTypes, identObjs, err
 }
 
 type checker struct {
 	fset      *token.FileSet
 	files     map[string]file
 	callTypes map[*ast.CallExpr]types.Type
+	identObjs map[*ast.Ident]types.Object
 }
 
 func (c checker) Visit(node ast.Node) ast.Visitor {
@@ -108,18 +114,17 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 		return c
 	}
 
-	var fun *ast.Ident
+	var id *ast.Ident
 	switch exp := call.Fun.(type) {
 	case (*ast.Ident):
-		fun = exp
+		id = exp
 	case (*ast.SelectorExpr):
-		fun = exp.Sel
+		id = exp.Sel
 	default:
 		fmt.Fprintf(os.Stderr, "unknown call: %T %+v\n", exp, exp)
 		return c
 	}
 
-	// Get the types
 	callType := c.callTypes[call]
 
 	unchecked := false
@@ -145,7 +150,7 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 	}
 
 	if unchecked {
-		pos := c.fset.Position(fun.NamePos)
+		pos := c.fset.Position(id.NamePos)
 		fmt.Fprintf(os.Stdout, "%s %s\n", pos, c.files[pos.Filename].lines[pos.Line-1])
 	}
 	return c
@@ -165,12 +170,12 @@ func checkFiles(fileNames []string) error {
 		astFiles[i] = f.ast
 	}
 
-	callTypes, err := typeCheck(fset, astFiles)
+	callTypes, identObjs, err := typeCheck(fset, astFiles)
 	if err != nil {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := checker{fset, files, callTypes}
+	visitor := checker{fset, files, callTypes, identObjs}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
