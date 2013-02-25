@@ -12,6 +12,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 func Err(s string, args ...interface{}) {
@@ -19,6 +21,8 @@ func Err(s string, args ...interface{}) {
 }
 
 func main() {
+	ignore := flag.String("ignore", "", "regular expression of function names to ignore")
+	ignorePkg := flag.String("ignorepkg", "fmt", "comma-separated list of package paths to ignore")
 	flag.Parse()
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
@@ -38,7 +42,7 @@ func main() {
 		files[i] = filepath.Join(pkg.Dir, fileName)
 	}
 
-	if err := checkFiles(files); err != nil {
+	if err := checkFiles(files, *ignore, strings.Split(*ignorePkg, ",")); err != nil {
 		Err("failed to check package: %s", err)
 		os.Exit(1)
 	}
@@ -100,6 +104,7 @@ type checker struct {
 	files     map[string]file
 	callTypes map[*ast.CallExpr]types.Type
 	identObjs map[*ast.Ident]types.Object
+	ignore    *regexp.Regexp
 	ignorePkg map[string]bool
 }
 
@@ -126,6 +131,7 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 		return c
 	}
 
+	// Ignore if in an ignored package
 	if obj := c.identObjs[id]; obj != nil {
 		if pkg := obj.GetPkg(); pkg != nil && c.ignorePkg[pkg.Path] {
 			return c
@@ -133,8 +139,12 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 	}
 	callType := c.callTypes[call]
 
-	unchecked := false
+	// Ignore if a name matches the regexp
+	if c.ignore != nil && c.ignore.MatchString(id.Name) {
+		return c
+	}
 
+	unchecked := false
 	switch t := callType.(type) {
 	case *types.NamedType:
 		// Single return
@@ -162,7 +172,7 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string) error {
+func checkFiles(fileNames []string, ignore string, ignorePkg []string) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -181,10 +191,21 @@ func checkFiles(fileNames []string) error {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	ignorePkg := make(map[string]bool)
-	ignorePkg["fmt"] = true
+	ignorePkgSet := make(map[string]bool)
+	for _, pkg := range ignorePkg {
+		ignorePkgSet[pkg] = true
+	}
 
-	visitor := checker{fset, files, callTypes, identObjs, ignorePkg}
+	var ignoreRe *regexp.Regexp
+	if ignore != "" {
+		var err error
+		ignoreRe, err = regexp.Compile(ignore)
+		if err != nil {
+			return fmt.Errorf("invalid ignore regexp: %s", err)
+		}
+	}
+
+	visitor := checker{fset, files, callTypes, identObjs, ignoreRe, ignorePkgSet}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
