@@ -89,11 +89,68 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 	return callTypes, err
 }
 
+type checker struct {
+	fset      *token.FileSet
+	callTypes map[*ast.CallExpr]types.Type
+}
+
+func (c checker) Visit(node ast.Node) ast.Visitor {
+	n, ok := node.(*ast.ExprStmt)
+	if !ok {
+		return c
+	}
+
+	// Check for a call expression
+	call, ok := n.X.(*ast.CallExpr)
+	if !ok {
+		return c
+	}
+
+	var fun *ast.Ident
+	switch exp := call.Fun.(type) {
+	case (*ast.Ident):
+		fun = exp
+	case (*ast.SelectorExpr):
+		fun = exp.Sel
+	default:
+		fmt.Fprintf(os.Stderr, "unknown call: %T %+v\n", exp, exp)
+		return c
+	}
+
+	// Get the types
+	callType := c.callTypes[call]
+
+	unchecked := false
+
+	switch t := callType.(type) {
+	case *types.NamedType:
+		// Single return
+		if isErrorType(t.Obj) {
+			unchecked = true
+		}
+	case *types.Result:
+		// Multiple returns
+		for _, v := range t.Values {
+			nt, ok := v.Type.(*types.NamedType)
+			if !ok {
+				continue
+			}
+			if isErrorType(nt.Obj) {
+				unchecked = true
+				break
+			}
+		}
+	}
+
+	if unchecked {
+		fmt.Fprintf(os.Stdout, "%s\n", c.fset.Position(fun.NamePos))
+	}
+	return c
+}
+
 func checkFiles(fileNames []string) error {
 	fset := token.NewFileSet()
-
 	astFiles := make([]*ast.File, len(fileNames))
-
 	files := make([]file, len(fileNames))
 
 	for i, fileName := range fileNames {
@@ -110,61 +167,9 @@ func checkFiles(fileNames []string) error {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := func(node ast.Node) {
-		n, ok := node.(*ast.ExprStmt)
-		if !ok {
-			return
-		}
-
-		// Check for a call expression
-		call, ok := n.X.(*ast.CallExpr)
-		if !ok {
-			return
-		}
-
-		var fun *ast.Ident
-		switch exp := call.Fun.(type) {
-		case (*ast.Ident):
-			fun = exp
-		case (*ast.SelectorExpr):
-			fun = exp.Sel
-		default:
-			fmt.Fprintf(os.Stderr, "unknown call: %T %+v\n", exp, exp)
-			return
-		}
-
-		// Get the types
-		callType := callTypes[call]
-
-		unchecked := false
-
-		switch t := callType.(type) {
-		case *types.NamedType:
-			// Single return
-			if isErrorType(t.Obj) {
-				unchecked = true
-			}
-		case *types.Result:
-			// Multiple returns
-			for _, v := range t.Values {
-				nt, ok := v.Type.(*types.NamedType)
-				if !ok {
-					continue
-				}
-				if isErrorType(nt.Obj) {
-					unchecked = true
-					break
-				}
-			}
-		}
-
-		if unchecked {
-			fmt.Fprintf(os.Stdout, "%s\n", fset.Position(fun.NamePos))
-		}
-	}
-
+	visitor := checker{fset, callTypes}
 	for _, astFile := range astFiles {
-		ast.Walk(visitorFunc(visitor), astFile)
+		ast.Walk(visitor, astFile)
 	}
 	//	ast.Fprint(os.Stderr, fset, astFile, nil)
 
@@ -178,11 +183,4 @@ type obj interface {
 
 func isErrorType(v obj) bool {
 	return v.GetPkg() == nil && v.GetName() == "error"
-}
-
-type visitorFunc func(node ast.Node)
-
-func (v visitorFunc) Visit(node ast.Node) ast.Visitor {
-	v(node)
-	return v
 }
