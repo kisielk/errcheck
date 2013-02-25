@@ -68,7 +68,8 @@ func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
 		return f, fmt.Errorf("could not parse: %s", err)
 	}
 
-	f = file{fset: fset, name: fileName, ast: astFile, lines: bytes.Split([]byte("\n"), data)}
+	lines := bytes.Split(data, []byte("\n"))
+	f = file{fset: fset, name: fileName, ast: astFile, lines: lines}
 	return f, nil
 }
 
@@ -91,6 +92,7 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 
 type checker struct {
 	fset      *token.FileSet
+	files     map[string]file
 	callTypes map[*ast.CallExpr]types.Type
 }
 
@@ -143,7 +145,8 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 	}
 
 	if unchecked {
-		fmt.Fprintf(os.Stdout, "%s\n", c.fset.Position(fun.NamePos))
+		pos := c.fset.Position(fun.NamePos)
+		fmt.Fprintf(os.Stdout, "%s %s\n", pos, c.files[pos.Filename].lines[pos.Line-1])
 	}
 	return c
 }
@@ -151,14 +154,14 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 func checkFiles(fileNames []string) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
-	files := make([]file, len(fileNames))
+	files := make(map[string]file, len(fileNames))
 
 	for i, fileName := range fileNames {
 		f, err := parseFile(fset, fileName)
 		if err != nil {
 			return fmt.Errorf("could not parse %s: %s", fileName, err)
 		}
-		files[i] = f
+		files[fileName] = f
 		astFiles[i] = f.ast
 	}
 
@@ -167,11 +170,10 @@ func checkFiles(fileNames []string) error {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := checker{fset, callTypes}
+	visitor := checker{fset, files, callTypes}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
-	//	ast.Fprint(os.Stderr, fset, astFile, nil)
 
 	return nil
 }
