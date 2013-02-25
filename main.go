@@ -100,6 +100,7 @@ type checker struct {
 	files     map[string]file
 	callTypes map[*ast.CallExpr]types.Type
 	identObjs map[*ast.Ident]types.Object
+	ignorePkg map[string]bool
 }
 
 func (c checker) Visit(node ast.Node) ast.Visitor {
@@ -125,6 +126,11 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 		return c
 	}
 
+	if obj := c.identObjs[id]; obj != nil {
+		if pkg := obj.GetPkg(); pkg != nil && c.ignorePkg[pkg.Path] {
+			return c
+		}
+	}
 	callType := c.callTypes[call]
 
 	unchecked := false
@@ -175,7 +181,10 @@ func checkFiles(fileNames []string) error {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := checker{fset, files, callTypes, identObjs}
+	ignorePkg := make(map[string]bool)
+	ignorePkg["fmt"] = true
+
+	visitor := checker{fset, files, callTypes, identObjs, ignorePkg}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
