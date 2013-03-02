@@ -287,7 +287,7 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 	}
 	pkgs, err := parser.ParseDir(fileSet, buildPkg.Dir, isGoFile, 0)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing %s: %v\n", buildPkg.Dir, err)
+		return nil, err
 	}
 
 	delete(pkgs, "documentation")
@@ -319,10 +319,13 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 	}
 
 	pkg, err = context.Check(fileSet, ff)
-	pkg.Complete = true
+	if err != nil {
+		return pkg, err
+	}
 
 	// We don't use imports, but per API we have to add the package.
 	imports[path] = pkg
 	allImports[path] = pkg
+	pkg.Complete = true
 	return pkg, nil
 }
