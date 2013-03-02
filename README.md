@@ -1,5 +1,5 @@
 errcheck
-=========
+========
 
 errcheck is a program for checking for unchecked errors in go programs.
 
@@ -36,3 +36,18 @@ An example of using errcheck to check the go standard library packages:
 
     go list std | grep -v cmd | xargs -n 1 ./errcheck -ignore 'Close|[wW]rite.*|Flush|Seek|[rR]ead.*'> stdlibcheck
 
+Editor Integration
+==================
+
+Emacs
+-----
+If you want to use errcheck together with compilation-mode, add
+the following to your `.emacs` file to enable it to parse the
+output and create hyperlinks to the relevant spots in your code:
+
+    (add-to-list 'compilation-error-regexp-alist 'go-errcheck)
+    (add-to-list 'compilation-error-regexp-alist-alist
+             '(go-errcheck "^\\(.+?\\):\\([[:digit:]]+\\):\\([[:digit:]]+\\) \t.+$" 1 2 3 1 1))
+
+You can then use `M-x compile RET errcheck your/import/path` to
+run errcheck from within Emacs.
