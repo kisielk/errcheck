@@ -36,6 +36,12 @@ An example of using errcheck to check the go standard library packages:
 
     go list std | grep -v cmd | xargs -n 1 errcheck -ignore 'Close|[wW]rite.*|Flush|Seek|[rR]ead.*'> stdlibcheck
 
+Exit Codes
+----------
+
+errcheck returns 1 if any problems were found in the checked files.
+It returns 2 on any if there were any other failures.
+
 Editor Integration
 ==================
 

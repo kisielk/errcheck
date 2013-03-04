@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -16,10 +17,22 @@ import (
 	"strings"
 )
 
-var allImports map[string]*types.Package
+var (
+	// allImports is a map of already-imported import paths to packages
+	allImports map[string]*types.Package
+
+	// ErrCheckErrors is returned by the checkFiles function if any errors were
+	// encountered during checking.
+	ErrCheckErrors = errors.New("found errors in checked files")
+)
 
 func Err(s string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "error:"+s+"\n", args...)
+}
+
+func Fatal(s string, args ...interface{}) {
+	Err(s, args...)
+	os.Exit(2)
 }
 
 func main() {
@@ -30,15 +43,13 @@ func main() {
 	flag.Parse()
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
-		Err("you must specify a package")
 		flag.Usage()
-		os.Exit(1)
+		Fatal("you must specify a package")
 	}
 
 	pkg, err := build.Import(pkgName, ".", 0)
 	if err != nil {
-		Err("could not import %s: %s", pkgName, err)
-		os.Exit(1)
+		Fatal("could not import %s: %s", pkgName, err)
 	}
 	files := make([]string, len(pkg.GoFiles))
 	for i, fileName := range pkg.GoFiles {
@@ -46,8 +57,10 @@ func main() {
 	}
 
 	if err := checkFiles(files, *ignore, strings.Split(*ignorePkg, ",")); err != nil {
-		Err("failed to check package: %s", err)
-		os.Exit(1)
+		if err == ErrCheckErrors {
+			os.Exit(1)
+		}
+		Fatal("failed to check package: %s", err)
 	}
 }
 
@@ -110,9 +123,20 @@ type checker struct {
 	identObjs map[*ast.Ident]types.Object
 	ignore    *regexp.Regexp
 	ignorePkg map[string]bool
+
+	errors []error
 }
 
-func (c checker) Visit(node ast.Node) ast.Visitor {
+type uncheckedErr struct {
+	pos  token.Position
+	line []byte
+}
+
+func (e uncheckedErr) Error() string {
+	return fmt.Sprintf("%s %s", e.pos, e.line)
+}
+
+func (c *checker) Visit(node ast.Node) ast.Visitor {
 	n, ok := node.(*ast.ExprStmt)
 	if !ok {
 		return c
@@ -171,7 +195,7 @@ func (c checker) Visit(node ast.Node) ast.Visitor {
 
 	if unchecked {
 		pos := c.fset.Position(id.NamePos)
-		fmt.Fprintf(os.Stdout, "%s %s\n", pos, c.files[pos.Filename].lines[pos.Line-1])
+		c.errors = append(c.errors, uncheckedErr{pos, c.files[pos.Filename].lines[pos.Line-1]})
 	}
 	return c
 }
@@ -209,11 +233,18 @@ func checkFiles(fileNames []string, ignore string, ignorePkg []string) error {
 		}
 	}
 
-	visitor := checker{fset, files, callTypes, identObjs, ignoreRe, ignorePkgSet}
+	visitor := &checker{fset, files, callTypes, identObjs, ignoreRe, ignorePkgSet, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
 
+	for _, e := range visitor.errors {
+		fmt.Fprintln(os.Stderr, e)
+	}
+
+	if len(visitor.errors) > 0 {
+		return ErrCheckErrors
+	}
 	return nil
 }
 
