@@ -26,19 +26,48 @@ var (
 	ErrCheckErrors = errors.New("found errors in checked files")
 )
 
+// Err prints an error to Stderr
 func Err(s string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "error:"+s+"\n", args...)
 }
 
+// Fatal calls Err followed by os.Exit(2)
 func Fatal(s string, args ...interface{}) {
 	Err(s, args...)
 	os.Exit(2)
 }
 
+// regexpFlag is a type that can be used with flag.Var for regular expression flags
+type regexpFlag struct {
+	re *regexp.Regexp
+}
+
+func (r regexpFlag) String() string {
+	if r.re == nil {
+		return ""
+	}
+	return r.re.String()
+}
+
+func (r *regexpFlag) Set(s string) error {
+	if s == "" {
+		r.re = nil
+		return nil
+	}
+
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return err
+	}
+	r.re = re
+	return nil
+}
+
 func main() {
 	allImports = make(map[string]*types.Package)
 
-	ignore := flag.String("ignore", "", "regular expression of function names to ignore")
+	var ignore regexpFlag
+	flag.Var(&ignore, "ignore", "regular expression of function names to ignore")
 	ignorePkg := flag.String("ignorepkg", "fmt", "comma-separated list of package paths to ignore")
 	flag.Parse()
 	pkgName := flag.Arg(0)
@@ -56,7 +85,7 @@ func main() {
 		files[i] = filepath.Join(pkg.Dir, fileName)
 	}
 
-	if err := checkFiles(files, *ignore, strings.Split(*ignorePkg, ",")); err != nil {
+	if err := checkFiles(files, ignore.re, strings.Split(*ignorePkg, ",")); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
@@ -200,7 +229,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string, ignore string, ignorePkg []string) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg []string) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -224,16 +253,7 @@ func checkFiles(fileNames []string, ignore string, ignorePkg []string) error {
 		ignorePkgSet[pkg] = true
 	}
 
-	var ignoreRe *regexp.Regexp
-	if ignore != "" {
-		var err error
-		ignoreRe, err = regexp.Compile(ignore)
-		if err != nil {
-			return fmt.Errorf("invalid ignore regexp: %s", err)
-		}
-	}
-
-	visitor := &checker{fset, files, callTypes, identObjs, ignoreRe, ignorePkgSet, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkgSet, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
