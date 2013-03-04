@@ -28,7 +28,7 @@ var (
 
 // Err prints an error to Stderr
 func Err(s string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "error:"+s+"\n", args...)
+	fmt.Fprintf(os.Stderr, "error: "+s+"\n", args...)
 }
 
 // Fatal calls Err followed by os.Exit(2)
@@ -63,12 +63,36 @@ func (r *regexpFlag) Set(s string) error {
 	return nil
 }
 
+type stringsFlag struct {
+	items map[string]bool
+}
+
+func (f stringsFlag) String() string {
+	items := make([]string, 0, len(f.items))
+	for k := range f.items {
+		items = append(items, k)
+	}
+	return strings.Join(items, ",")
+}
+
+func (f *stringsFlag) Set(s string) error {
+	if f.items == nil {
+		f.items = make(map[string]bool)
+	}
+	for _, item := range strings.Split(s, ",") {
+		f.items[item] = true
+	}
+	return nil
+}
+
 func main() {
 	allImports = make(map[string]*types.Package)
 
 	var ignore regexpFlag
 	flag.Var(&ignore, "ignore", "regular expression of function names to ignore")
-	ignorePkg := flag.String("ignorepkg", "fmt", "comma-separated list of package paths to ignore")
+	ignorePkg := &stringsFlag{}
+	ignorePkg.Set("fmt")
+	flag.Var(ignorePkg, "ignorepkg", "comma-separated list of package paths to ignore")
 	flag.Parse()
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
@@ -85,7 +109,7 @@ func main() {
 		files[i] = filepath.Join(pkg.Dir, fileName)
 	}
 
-	if err := checkFiles(files, ignore.re, strings.Split(*ignorePkg, ",")); err != nil {
+	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
@@ -229,7 +253,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg []string) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -248,12 +272,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg []string) e
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	ignorePkgSet := make(map[string]bool)
-	for _, pkg := range ignorePkg {
-		ignorePkgSet[pkg] = true
-	}
-
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkgSet, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
