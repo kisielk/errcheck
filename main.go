@@ -63,6 +63,7 @@ func (r *regexpFlag) Set(s string) error {
 	return nil
 }
 
+// stringsFlag is a type that can be used with flag.Var for lists that are turned to a set
 type stringsFlag struct {
 	items map[string]bool
 }
@@ -100,13 +101,9 @@ func main() {
 		Fatal("you must specify a package")
 	}
 
-	pkg, err := build.Import(pkgName, ".", 0)
+	files, err := getFiles(pkgName)
 	if err != nil {
 		Fatal("could not import %s: %s", pkgName, err)
-	}
-	files := make([]string, len(pkg.GoFiles))
-	for i, fileName := range pkg.GoFiles {
-		files[i] = filepath.Join(pkg.Dir, fileName)
 	}
 
 	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
@@ -115,6 +112,22 @@ func main() {
 		}
 		Fatal("failed to check package: %s", err)
 	}
+}
+
+// getFiles returns all the Go files found at a package path
+func getFiles(path string) ([]string, error) {
+	ctx := build.Default
+	ctx.CgoEnabled = false
+	pkg, err := ctx.Import(path, ".", 0)
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]string, len(pkg.GoFiles))
+	for i, fileName := range pkg.GoFiles {
+		files[i] = filepath.Join(pkg.Dir, fileName)
+	}
+	return files, nil
 }
 
 type file struct {
