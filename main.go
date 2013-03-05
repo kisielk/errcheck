@@ -95,16 +95,29 @@ func main() {
 	ignorePkg.Set("fmt")
 	flag.Var(ignorePkg, "ignorepkg", "comma-separated list of package paths to ignore")
 	flag.Parse()
+
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
 		flag.Usage()
 		Fatal("you must specify a package")
 	}
 
-	files, err := getFiles(pkgName)
-	if err != nil {
-		Fatal("could not import %s: %s", pkgName, err)
+	var err1, err2 error
+
+	// First try to treat pkgName as import path...
+	pkg, err1 := importPathToPkg(pkgName)
+	if err1 != nil {
+		// ... then attempt as file path
+		pkg, err2 = directoryToPkg(pkgName)
 	}
+
+	if err2 != nil {
+		// Print both errors so the user can see in what ways the
+		// package lookup failed.
+		Fatal("could not import %s: %s\n%s", pkgName, err1, err2)
+	}
+
+	files := getFiles(pkg)
 
 	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
 		if err == ErrCheckErrors {
@@ -114,20 +127,29 @@ func main() {
 	}
 }
 
-// getFiles returns all the Go files found at a package path
-func getFiles(path string) ([]string, error) {
+// directoryToPkg returns a Package found in a directory
+func directoryToPkg(directory string) (*build.Package, error) {
+	ctx := build.Default
+	ctx.CgoEnabled = false
+	pkg, err := ctx.ImportDir(directory, 0)
+	return pkg, err
+}
+
+// importPathToPkg returns a Package found at a package path
+func importPathToPkg(path string) (*build.Package, error) {
 	ctx := build.Default
 	ctx.CgoEnabled = false
 	pkg, err := ctx.Import(path, ".", 0)
-	if err != nil {
-		return nil, err
-	}
+	return pkg, err
+}
 
+// getFiles returns all the Go files found in a package
+func getFiles(pkg *build.Package) []string {
 	files := make([]string, len(pkg.GoFiles))
 	for i, fileName := range pkg.GoFiles {
 		files[i] = filepath.Join(pkg.Dir, fileName)
 	}
-	return files, nil
+	return files
 }
 
 type file struct {
