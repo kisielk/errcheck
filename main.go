@@ -242,7 +242,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	case (*ast.SelectorExpr):
 		id = exp.Sel
 	default:
-		fmt.Fprintf(os.Stderr, "unknown call: %T %+v\n", exp, exp)
+		fmt.Fprintf(os.Stderr, "unhandled expression at %s: %T %+v\n", c.fset.Position(call.Lparen), exp, exp)
 		return c
 	}
 
