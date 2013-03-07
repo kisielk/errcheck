@@ -312,7 +312,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 	}
 
 	for _, e := range visitor.errors {
-		fmt.Fprintln(os.Stderr, e)
+		fmt.Println(e)
 	}
 
 	if len(visitor.errors) > 0 {
