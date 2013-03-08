@@ -30,4 +30,8 @@ func main() {
 	y := u{x}
 	_ = y.t.a()
 	y.t.a()
+
+	m1 := map[string]func() error{"a": a}
+	_ = m1["a"]()
+	m1["a"]()
 }

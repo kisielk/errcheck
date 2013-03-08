@@ -235,6 +235,10 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 		return c
 	}
 
+	// Try to get an identifier.
+	// Currently only supports simple expressions:
+	//     1. f()
+	//     2. x.y.f()
 	var id *ast.Ident
 	switch exp := call.Fun.(type) {
 	case (*ast.Ident):
@@ -242,25 +246,25 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	case (*ast.SelectorExpr):
 		id = exp.Sel
 	default:
-		fmt.Fprintf(os.Stderr, "unhandled expression at %s: %T %+v\n", c.fset.Position(call.Lparen), exp, exp)
-		return c
+		// eg: *ast.SliceExpr, *ast.IndexExpr
 	}
 
-	// Ignore if in an ignored package
-	if obj := c.identObjs[id]; obj != nil {
-		if pkg := obj.GetPkg(); pkg != nil && c.ignorePkg[pkg.Path] {
+	// If we got an identifier for the function, see if it is ignored
+	if id != nil {
+		// Ignore if in an ignored package
+		if obj := c.identObjs[id]; obj != nil {
+			if pkg := obj.GetPkg(); pkg != nil && c.ignorePkg[pkg.Path] {
+				return c
+			}
+		}
+		// Ignore if the name matches the regexp
+		if c.ignore != nil && c.ignore.MatchString(id.Name) {
 			return c
 		}
 	}
-	callType := c.callTypes[call]
-
-	// Ignore if a name matches the regexp
-	if c.ignore != nil && c.ignore.MatchString(id.Name) {
-		return c
-	}
 
 	unchecked := false
-	switch t := callType.(type) {
+	switch t := c.callTypes[call].(type) {
 	case *types.NamedType:
 		// Single return
 		if isErrorType(t.Obj) {
@@ -281,7 +285,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	}
 
 	if unchecked {
-		pos := c.fset.Position(id.NamePos)
+		pos := c.fset.Position(call.Lparen)
 		c.errors = append(c.errors, uncheckedErr{pos, c.files[pos.Filename].lines[pos.Line-1]})
 	}
 	return c
