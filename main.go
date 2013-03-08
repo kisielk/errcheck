@@ -77,9 +77,7 @@ func (f stringsFlag) String() string {
 }
 
 func (f *stringsFlag) Set(s string) error {
-	if f.items == nil {
-		f.items = make(map[string]bool)
-	}
+	f.items = make(map[string]bool)
 	for _, item := range strings.Split(s, ",") {
 		f.items[item] = true
 	}
