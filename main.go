@@ -284,7 +284,9 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 
 	if unchecked {
 		pos := c.fset.Position(call.Lparen)
-		c.errors = append(c.errors, uncheckedErr{pos, c.files[pos.Filename].lines[pos.Line-1]})
+		line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
+		line = append([]byte{'\t'}, line...)
+		c.errors = append(c.errors, uncheckedErr{pos, line})
 	}
 	return c
 }
