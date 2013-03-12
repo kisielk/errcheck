@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/go.exp/go/types"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"io/ioutil"
 	"os"
 	"path/filepath"
