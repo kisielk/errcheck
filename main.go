@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/go.exp/go/exact"
 	"code.google.com/p/go.exp/go/types"
 	"errors"
 	"flag"
@@ -182,7 +183,7 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 	callTypes := make(map[*ast.CallExpr]types.Type)
 	identObjs := make(map[*ast.Ident]types.Object)
 
-	exprFn := func(x ast.Expr, typ types.Type, val interface{}) {
+	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
 		call, ok := x.(*ast.CallExpr)
 		if !ok {
 			return
