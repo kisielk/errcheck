@@ -198,7 +198,7 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 		Ident:  identFn,
 		Import: importer,
 	}
-	_, err := context.Check("FIX LINE 201", fset, astFiles...) // FIXME Not sure what to put as new 1st arg to Context.Check
+	_, err := context.Check(astFiles[0].Name.Name, fset, astFiles...)
 	return callTypes, identObjs, err
 }
 
