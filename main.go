@@ -427,7 +427,7 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 		Import: importer,
 	}
 
-	pkg, err = context.Check("FIX LINE 430", fileSet, ff...) // FIXME Not sure what to put as new 1st arg to Context.Check
+	pkg, err = context.Check(name, fileSet, ff...)
 	if err != nil {
 		return pkg, err
 	}
