@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"code.google.com/p/go.exp/go/exact"
-	"code.google.com/p/go.exp/go/types"
+	"code.google.com/p/go.tools/go/exact"
+	"code.google.com/p/go.tools/go/types"
 	"errors"
 	"flag"
 	"fmt"
