@@ -198,7 +198,7 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 		Ident:  identFn,
 		Import: importer,
 	}
-	_, err := context.Check(fset, astFiles)
+	_, err := context.Check("FIX LINE 201", fset, astFiles...) // FIXME Not sure what to put as new 1st arg to Context.Check
 	return callTypes, identObjs, err
 }
 
@@ -252,7 +252,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	if id != nil {
 		// Ignore if in an ignored package
 		if obj := c.identObjs[id]; obj != nil {
-			if pkg := obj.GetPkg(); pkg != nil && c.ignorePkg[pkg.Path] {
+			if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
 				return c
 			}
 		}
@@ -264,19 +264,19 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 
 	unchecked := false
 	switch t := c.callTypes[call].(type) {
-	case *types.NamedType:
+	case *types.Named:
 		// Single return
-		if isErrorType(t.Obj) {
+		if isErrorType(t.Obj()) {
 			unchecked = true
 		}
-	case *types.Result:
+	case *types.Tuple:
 		// Multiple returns
-		for _, v := range t.Values {
-			nt, ok := v.Type.(*types.NamedType)
+		for i := 0; i < t.Len(); i++ {
+			nt, ok := t.At(i).Type().(*types.Named)
 			if !ok {
 				continue
 			}
-			if isErrorType(nt.Obj) {
+			if isErrorType(nt.Obj()) {
 				unchecked = true
 				break
 			}
@@ -327,12 +327,12 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 }
 
 type obj interface {
-	GetPkg() *types.Package
-	GetName() string
+	Pkg() *types.Package
+	Name() string
 }
 
 func isErrorType(v obj) bool {
-	return v.GetPkg() == nil && v.GetName() == "error"
+	return v.Pkg() == nil && v.Name() == "error"
 }
 
 func importer(imports map[string]*types.Package, path string) (pkg *types.Package, err error) {
@@ -364,14 +364,14 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 		pkg, err = types.GcImport(allImports, path)
 		if err == nil {
 			// We don't use imports, but per API we have to add the package.
-			imports[pkg.Path] = pkg
-			allImports[pkg.Path] = pkg
+			imports[pkg.Path()] = pkg
+			allImports[pkg.Path()] = pkg
 			return pkg, nil
 		}
 	}
 
 	// See if we already imported this package
-	if pkg = allImports[path]; pkg != nil && pkg.Complete {
+	if pkg = allImports[path]; pkg != nil && pkg.Complete() {
 		return pkg, nil
 	}
 
@@ -427,7 +427,7 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 		Import: importer,
 	}
 
-	pkg, err = context.Check(fileSet, ff)
+	pkg, err = context.Check("FIX LINE 430", fileSet, ff...) // FIXME Not sure what to put as new 1st arg to Context.Check
 	if err != nil {
 		return pkg, err
 	}
@@ -435,6 +435,6 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 	// We don't use imports, but per API we have to add the package.
 	imports[path] = pkg
 	allImports[path] = pkg
-	pkg.Complete = true
+	// pkg.Complete = true // FIXME Can't assign pkg.Complete in new API
 	return pkg, nil
 }
