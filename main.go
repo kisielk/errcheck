@@ -219,7 +219,7 @@ type uncheckedErr struct {
 }
 
 func (e uncheckedErr) Error() string {
-	return fmt.Sprintf("%s %s", e.pos, e.line)
+	return fmt.Sprintf("%s\t%s", e.pos, e.line)
 }
 
 func (c *checker) Visit(node ast.Node) ast.Visitor {
@@ -286,7 +286,6 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	if unchecked {
 		pos := c.fset.Position(call.Lparen)
 		line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
-		line = append([]byte{'\t'}, line...)
 		c.errors = append(c.errors, uncheckedErr{pos, line})
 	}
 	return c
