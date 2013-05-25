@@ -106,6 +106,11 @@ func main() {
 	}
 	files := getFiles(pkg)
 
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "package contains no go source files")
+		os.Exit(0)
+	}
+
 	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
