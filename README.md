@@ -8,8 +8,7 @@ Install
 
     go get github.com/kisielk/errcheck
 
-Note that errcheck depends on the go/types package which is currently only
-available in go tip.
+errcheck requires Go 1.1 and depends on the go/types package from the go.tools repository.
 
 Use
 ---
