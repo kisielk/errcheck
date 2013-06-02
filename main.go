@@ -93,7 +93,9 @@ func main() {
 	ignorePkg := &stringsFlag{}
 	ignorePkg.Set("fmt")
 	flag.Var(ignorePkg, "ignorepkg", "comma-separated list of package paths to ignore")
+	noBlanks := flag.Bool("noblanks", false, "if true, check for errors assigned to blank identifier")
 	flag.Parse()
+	allowBlanks := !(*noBlanks)
 
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
@@ -111,7 +113,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
+	if err := checkFiles(files, ignore.re, ignorePkg.items, allowBlanks); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
@@ -208,12 +210,13 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 }
 
 type checker struct {
-	fset      *token.FileSet
-	files     map[string]file
-	callTypes map[*ast.CallExpr]types.Type
-	identObjs map[*ast.Ident]types.Object
-	ignore    *regexp.Regexp
-	ignorePkg map[string]bool
+	fset        *token.FileSet
+	files       map[string]file
+	callTypes   map[*ast.CallExpr]types.Type
+	identObjs   map[*ast.Ident]types.Object
+	ignore      *regexp.Regexp
+	ignorePkg   map[string]bool
+	allowBlanks bool
 
 	errors []error
 }
@@ -287,30 +290,26 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 func (c *checker) Visit(node ast.Node) ast.Visitor {
-	n, ok := node.(*ast.ExprStmt)
-	if !ok {
+	switch stmt := node.(type) {
+	case *ast.ExprStmt:
+		call, ok := stmt.X.(*ast.CallExpr)
+		if ok && !c.ignoreCall(call) && c.callReturnsError(call) {
+			pos := c.fset.Position(call.Lparen)
+			line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
+			c.errors = append(c.errors, uncheckedErr{pos, line})
+		}
 		return c
-	}
-
-	// Check for a call expression
-	call, ok := n.X.(*ast.CallExpr)
-	if !ok {
-		return c
-	}
-
-	if c.ignoreCall(call) {
-		return c
-	}
-
-	if c.callReturnsError(call) {
-		pos := c.fset.Position(call.Lparen)
-		line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
-		c.errors = append(c.errors, uncheckedErr{pos, line})
+	case *ast.AssignStmt:
+		if c.allowBlanks {
+			break
+		}
+		// TODO assignment logic goes here
+	default:
 	}
 	return c
 }
 
-func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, allowBlanks bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -329,7 +328,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, allowBlanks, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
