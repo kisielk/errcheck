@@ -227,18 +227,7 @@ func (e uncheckedErr) Error() string {
 	return fmt.Sprintf("%s\t%s", e.pos, e.line)
 }
 
-func (c *checker) Visit(node ast.Node) ast.Visitor {
-	n, ok := node.(*ast.ExprStmt)
-	if !ok {
-		return c
-	}
-
-	// Check for a call expression
-	call, ok := n.X.(*ast.CallExpr)
-	if !ok {
-		return c
-	}
-
+func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -253,42 +242,58 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 		// eg: *ast.SliceExpr, *ast.IndexExpr
 	}
 
-	// If we got an identifier for the function, see if it is ignored
-	if id != nil {
-		// Ignore if in an ignored package
-		if obj := c.identObjs[id]; obj != nil {
-			if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
-				return c
-			}
-		}
-		// Ignore if the name matches the regexp
-		if c.ignore != nil && c.ignore.MatchString(id.Name) {
-			return c
-		}
+	if id == nil {
+		return false
 	}
 
-	unchecked := false
+	// If we got an identifier for the function, see if it is ignored
+	// Ignore if in an ignored package
+	if obj := c.identObjs[id]; obj != nil {
+		if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
+			return true
+		}
+	}
+	// Ignore if the name matches the regexp
+	return c.ignore != nil && c.ignore.MatchString(id.Name)
+}
+
+func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 	switch t := c.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
 		if isErrorType(t.Obj()) {
-			unchecked = true
+			return true
 		}
 	case *types.Tuple:
 		// Multiple returns
 		for i := 0; i < t.Len(); i++ {
-			nt, ok := t.At(i).Type().(*types.Named)
-			if !ok {
-				continue
-			}
-			if isErrorType(nt.Obj()) {
-				unchecked = true
-				break
+			if nt, ok := t.At(i).Type().(*types.Named); ok {
+				if isErrorType(nt.Obj()) {
+					return true
+				}
 			}
 		}
 	}
+	return false
+}
 
-	if unchecked {
+func (c *checker) Visit(node ast.Node) ast.Visitor {
+	n, ok := node.(*ast.ExprStmt)
+	if !ok {
+		return c
+	}
+
+	// Check for a call expression
+	call, ok := n.X.(*ast.CallExpr)
+	if !ok {
+		return c
+	}
+
+	if c.ignoreCall(call) {
+		return c
+	}
+
+	if c.callReturnsError(call) {
 		pos := c.fset.Position(call.Lparen)
 		line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
 		c.errors = append(c.errors, uncheckedErr{pos, line})
