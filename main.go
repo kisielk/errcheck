@@ -257,21 +257,30 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	return c.ignore != nil && c.ignore.MatchString(id.Name)
 }
 
-func (c *checker) callReturnsError(call *ast.CallExpr) bool {
+// errorsByArg returns a slice s such that
+// len(s) == number of return types of call
+// s[i] == true iff return type at position i from left is an error type
+func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 	switch t := c.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
-		if isErrorType(t.Obj()) {
-			return true
-		}
+		return []bool{isErrorType(t.Obj())}
 	case *types.Tuple:
 		// Multiple returns
+		s := make([]bool, t.Len())
 		for i := 0; i < t.Len(); i++ {
-			if nt, ok := t.At(i).Type().(*types.Named); ok {
-				if isErrorType(nt.Obj()) {
-					return true
-				}
-			}
+			nt, ok := t.At(i).Type().(*types.Named)
+			s[i] = ok && isErrorType(nt.Obj())
+		}
+		return s
+	}
+	return nil
+}
+
+func (c *checker) callReturnsError(call *ast.CallExpr) bool {
+	for _, isError := range c.errorsByArg(call) {
+		if isError {
+			return true
 		}
 	}
 	return false
