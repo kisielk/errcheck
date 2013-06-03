@@ -289,21 +289,55 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 	return false
 }
 
+func (c *checker) addErrorAtPosition(position token.Pos) {
+	pos := c.fset.Position(position)
+	line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
+	c.errors = append(c.errors, uncheckedErr{pos, line})
+}
+
 func (c *checker) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
-		call, ok := stmt.X.(*ast.CallExpr)
-		if ok && !c.ignoreCall(call) && c.callReturnsError(call) {
-			pos := c.fset.Position(call.Lparen)
-			line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
-			c.errors = append(c.errors, uncheckedErr{pos, line})
+		if call, ok := stmt.X.(*ast.CallExpr); ok {
+			if !c.ignoreCall(call) && c.callReturnsError(call) {
+				c.addErrorAtPosition(call.Lparen)
+			}
 		}
-		return c
 	case *ast.AssignStmt:
 		if c.allowBlanks {
 			break
 		}
-		// TODO assignment logic goes here
+		if len(stmt.Rhs) == 1 {
+			// single value on rhs; check against lhs identifiers
+			if call, ok := stmt.Rhs[0].(*ast.CallExpr); ok {
+				if c.ignoreCall(call) {
+					break
+				}
+				isError := c.errorsByArg(call)
+				for i := 0; i < len(stmt.Lhs); i++ {
+					if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
+						if id.Name == "_" && isError[i] {
+							c.addErrorAtPosition(id.NamePos)
+						}
+					}
+				}
+			}
+		} else {
+			// multiple value on rhs; in this case a call can't return
+			// multiple values. Assume len(stmt.Lhs) == len(stmt.Rhs)
+			for i := 0; i < len(stmt.Lhs); i++ {
+				if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
+					if call, ok := stmt.Rhs[i].(*ast.CallExpr); ok {
+            if c.ignoreCall(call) {
+							continue
+						}
+						if id.Name == "_" && c.callReturnsError(call) {
+							c.addErrorAtPosition(id.NamePos)
+						}
+					}
+				}
+			}
+		}
 	default:
 	}
 	return c
