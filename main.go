@@ -93,9 +93,8 @@ func main() {
 	ignorePkg := &stringsFlag{}
 	ignorePkg.Set("fmt")
 	flag.Var(ignorePkg, "ignorepkg", "comma-separated list of package paths to ignore")
-	noBlanks := flag.Bool("noblanks", false, "if true, check for errors assigned to blank identifier")
+	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
 	flag.Parse()
-	allowBlanks := !(*noBlanks)
 
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
@@ -113,7 +112,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := checkFiles(files, ignore.re, ignorePkg.items, allowBlanks); err != nil {
+	if err := checkFiles(files, ignore.re, ignorePkg.items, *blank); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
@@ -210,13 +209,13 @@ func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]typ
 }
 
 type checker struct {
-	fset        *token.FileSet
-	files       map[string]file
-	callTypes   map[*ast.CallExpr]types.Type
-	identObjs   map[*ast.Ident]types.Object
-	ignore      *regexp.Regexp
-	ignorePkg   map[string]bool
-	allowBlanks bool
+	fset      *token.FileSet
+	files     map[string]file
+	callTypes map[*ast.CallExpr]types.Type
+	identObjs map[*ast.Ident]types.Object
+	ignore    *regexp.Regexp
+	ignorePkg map[string]bool
+	blank     bool
 
 	errors []error
 }
@@ -304,7 +303,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 	case *ast.AssignStmt:
-		if c.allowBlanks {
+		if !c.blank {
 			break
 		}
 		if len(stmt.Rhs) == 1 {
@@ -343,7 +342,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, allowBlanks bool) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -362,7 +361,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, allowBlanks, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, blank, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
