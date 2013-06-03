@@ -93,6 +93,7 @@ func main() {
 	ignorePkg := &stringsFlag{}
 	ignorePkg.Set("fmt")
 	flag.Var(ignorePkg, "ignorepkg", "comma-separated list of package paths to ignore")
+	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
 	flag.Parse()
 
 	pkgName := flag.Arg(0)
@@ -111,7 +112,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := checkFiles(files, ignore.re, ignorePkg.items); err != nil {
+	if err := checkFiles(files, ignore.re, ignorePkg.items, *blank); err != nil {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
@@ -214,6 +215,7 @@ type checker struct {
 	identObjs map[*ast.Ident]types.Object
 	ignore    *regexp.Regexp
 	ignorePkg map[string]bool
+	blank     bool
 
 	errors []error
 }
@@ -227,18 +229,7 @@ func (e uncheckedErr) Error() string {
 	return fmt.Sprintf("%s\t%s", e.pos, e.line)
 }
 
-func (c *checker) Visit(node ast.Node) ast.Visitor {
-	n, ok := node.(*ast.ExprStmt)
-	if !ok {
-		return c
-	}
-
-	// Check for a call expression
-	call, ok := n.X.(*ast.CallExpr)
-	if !ok {
-		return c
-	}
-
+func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -253,50 +244,105 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 		// eg: *ast.SliceExpr, *ast.IndexExpr
 	}
 
-	// If we got an identifier for the function, see if it is ignored
-	if id != nil {
-		// Ignore if in an ignored package
-		if obj := c.identObjs[id]; obj != nil {
-			if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
-				return c
-			}
-		}
-		// Ignore if the name matches the regexp
-		if c.ignore != nil && c.ignore.MatchString(id.Name) {
-			return c
-		}
+	if id == nil {
+		return false
 	}
 
-	unchecked := false
+	// If we got an identifier for the function, see if it is ignored
+	// Ignore if in an ignored package
+	if obj := c.identObjs[id]; obj != nil {
+		if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
+			return true
+		}
+	}
+	// Ignore if the name matches the regexp
+	return c.ignore != nil && c.ignore.MatchString(id.Name)
+}
+
+// errorsByArg returns a slice s such that
+// len(s) == number of return types of call
+// s[i] == true iff return type at position i from left is an error type
+func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 	switch t := c.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
-		if isErrorType(t.Obj()) {
-			unchecked = true
-		}
+		return []bool{isErrorType(t.Obj())}
 	case *types.Tuple:
 		// Multiple returns
+		s := make([]bool, t.Len())
 		for i := 0; i < t.Len(); i++ {
 			nt, ok := t.At(i).Type().(*types.Named)
-			if !ok {
-				continue
-			}
-			if isErrorType(nt.Obj()) {
-				unchecked = true
-				break
-			}
+			s[i] = ok && isErrorType(nt.Obj())
+		}
+		return s
+	}
+	return nil
+}
+
+func (c *checker) callReturnsError(call *ast.CallExpr) bool {
+	for _, isError := range c.errorsByArg(call) {
+		if isError {
+			return true
 		}
 	}
+	return false
+}
 
-	if unchecked {
-		pos := c.fset.Position(call.Lparen)
-		line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
-		c.errors = append(c.errors, uncheckedErr{pos, line})
+func (c *checker) addErrorAtPosition(position token.Pos) {
+	pos := c.fset.Position(position)
+	line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
+	c.errors = append(c.errors, uncheckedErr{pos, line})
+}
+
+func (c *checker) Visit(node ast.Node) ast.Visitor {
+	switch stmt := node.(type) {
+	case *ast.ExprStmt:
+		if call, ok := stmt.X.(*ast.CallExpr); ok {
+			if !c.ignoreCall(call) && c.callReturnsError(call) {
+				c.addErrorAtPosition(call.Lparen)
+			}
+		}
+	case *ast.AssignStmt:
+		if !c.blank {
+			break
+		}
+		if len(stmt.Rhs) == 1 {
+			// single value on rhs; check against lhs identifiers
+			if call, ok := stmt.Rhs[0].(*ast.CallExpr); ok {
+				if c.ignoreCall(call) {
+					break
+				}
+				isError := c.errorsByArg(call)
+				for i := 0; i < len(stmt.Lhs); i++ {
+					if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
+						if id.Name == "_" && isError[i] {
+							c.addErrorAtPosition(id.NamePos)
+						}
+					}
+				}
+			}
+		} else {
+			// multiple value on rhs; in this case a call can't return
+			// multiple values. Assume len(stmt.Lhs) == len(stmt.Rhs)
+			for i := 0; i < len(stmt.Lhs); i++ {
+				if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
+					if call, ok := stmt.Rhs[i].(*ast.CallExpr); ok {
+            if c.ignoreCall(call) {
+							continue
+						}
+						if id.Name == "_" && c.callReturnsError(call) {
+							c.addErrorAtPosition(id.NamePos)
+						}
+					}
+				}
+			}
+		}
+	default:
 	}
 	return c
 }
 
-func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -315,7 +361,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, blank, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}

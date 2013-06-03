@@ -34,4 +34,8 @@ func main() {
 	m1 := map[string]func() error{"a": a}
 	_ = m1["a"]()
 	m1["a"]()
+
+	// Additional cases for assigning errors to blank identifier
+	z, _ := b()
+	_, w := a(), 5
 }
