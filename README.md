@@ -18,7 +18,7 @@ argument:
 
     errcheck github.com/kisielk/errcheck/example
 
-There are currently two flags: `-ignore` and `-ignorepkg`
+There are currently three flags: `-ignore`, `-ignorepkg` and `-blank`
 
 The `-ignore` flag takes a regular expression of function names to ignore.
 For example, you may wish to ignore common operations like Read and Write:
@@ -30,6 +30,9 @@ to ignore. By default the `fmt` package is ignored, so you should include
 it in your list if you want the default behavior:
 
     errcheck -ignorepkg 'fmt,encoding/binary' path/to/package
+
+The `-blank` flag enables checking for assignments of errors to the
+blank identifier. It takes no arguments.
 
 An example of using errcheck to check the go standard library packages:
 
