@@ -33,7 +33,7 @@ func Err(s string, args ...interface{}) {
 }
 
 // Fatal calls Err followed by os.Exit(2)
-func Fatal(s string, args ...interface{}) {
+func Fatalf(s string, args ...interface{}) {
 	Err(s, args...)
 	os.Exit(2)
 }
@@ -99,11 +99,11 @@ func main() {
 	pkgName := flag.Arg(0)
 	if pkgName == "" {
 		flag.Usage()
-		Fatal("you must specify a package")
+		Fatalf("you must specify a package")
 	}
 	pkg, err := findPackage(pkgName)
 	if err != nil {
-		Fatal("%s", err)
+		Fatalf("%s", err)
 	}
 	files := getFiles(pkg)
 
@@ -116,7 +116,7 @@ func main() {
 		if err == ErrCheckErrors {
 			os.Exit(1)
 		}
-		Fatal("failed to check package: %s", err)
+		Fatalf("failed to check package: %s", err)
 	}
 }
 
@@ -327,7 +327,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 			for i := 0; i < len(stmt.Lhs); i++ {
 				if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
 					if call, ok := stmt.Rhs[i].(*ast.CallExpr); ok {
-            if c.ignoreCall(call) {
+						if c.ignoreCall(call) {
 							continue
 						}
 						if id.Name == "_" && c.callReturnsError(call) {
