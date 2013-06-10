@@ -76,28 +76,21 @@ func main() {
 	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
 	flag.Parse()
 
-	pkgName := flag.Arg(0)
-	if pkgName == "" {
+	pkgPath := flag.Arg(0)
+	if pkgPath == "" {
 		flag.Usage()
 		Fatalf("you must specify a package")
 	}
-	pkg, err := findPackage(pkgName)
-	if err != nil {
-		Fatalf("%s", err)
-	}
-	files := getFiles(pkg)
 
-	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "package contains no go source files")
-		os.Exit(0)
-	}
-
-	if err := errcheck.CheckFiles(files, ignore.re, ignorePkg.items, *blank); err != nil {
+	if err := errcheck.CheckPackage(pkgPath, ignore.re, ignorePkg.items, *blank); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
 				fmt.Println(uncheckedError)
 			}
 			os.Exit(1)
+		} else if err == errcheck.ErrNoGoFiles {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(0)
 		}
 		Fatalf("failed to check package: %s", err)
 	}

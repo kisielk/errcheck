@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"code.google.com/p/go.tools/go/exact"
 	"code.google.com/p/go.tools/go/types"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -17,9 +18,12 @@ import (
 var (
 	// allImports is a map of already-imported import paths to packages
 	allImports map[string]*types.Package
+
+	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
+	ErrNoGoFiles = errors.New("package contains no go source files")
 )
 
-// UncheckedErrors is returned from the CheckFiles function if the package contains
+// UncheckedErrors is returned from the CheckPackage function if the package contains
 // any unchecked errors.
 type UncheckedErrors struct {
 	// Errors is a list of all the unchecked errors in the package.
@@ -29,6 +33,19 @@ type UncheckedErrors struct {
 
 func (e UncheckedErrors) Error() string {
 	return fmt.Sprint(len(e.Errors), "unchecked errors")
+}
+
+func CheckPackage(pkgPath string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
+	pkg, err := findPackage(pkgPath)
+	if err != nil {
+		return err
+	}
+	files := getFiles(pkg)
+
+	if len(files) == 0 {
+		return ErrNoGoFiles
+	}
+	return checkFiles(files, ignore, ignorePkg, blank)
 }
 
 type file struct {
@@ -217,7 +234,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func CheckFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
+func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
