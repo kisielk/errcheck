@@ -20,16 +20,35 @@ argument:
 
 There are currently three flags: `-ignore`, `-ignorepkg` and `-blank`
 
-The `-ignore` flag takes a regular expression of function names to ignore.
+The `-ignore` flag takes a comma-separated list of pairs of the form package:regex.
+For each package, the regex describes which functions to ignore within that package.
+The package may be omitted to have the regex apply to all packages.
+
 For example, you may wish to ignore common operations like Read and Write:
 
     errcheck -ignore '[rR]ead|[wW]rite' path/to/package
 
+or you may wish to ignore common functions like the `print` variants in `fmt`:
+
+    errcheck -ignore 'fmt:[FS]?[Pp]rint*' path/to/package
+
 The `-ignorepkg` flag takes a comma-separated list of package import paths
-to ignore. By default the `fmt` package is ignored, so you should include
-it in your list if you want the default behavior:
+to ignore:
 
     errcheck -ignorepkg 'fmt,encoding/binary' path/to/package
+
+Note that this is equivalent to:
+
+    errcheck -ignore 'fmt:.*,encoding/binary:.*' path/to/package
+
+If a regex is provided for a package `pkg` via `-ignore`, and `pkg` also appears
+in the list of packages passed to `-ignorepkg`, the latter takes precedence;
+that is, all functions within `pkg` will be ignored.
+
+Note that by default the `fmt` package is ignored entirely, unless a regex is
+specified for it. To disable this, specify a regex that matches nothing:
+
+    errcheck -ignore 'fmt:a^' path/to/package
 
 The `-blank` flag enables checking for assignments of errors to the
 blank identifier. It takes no arguments.

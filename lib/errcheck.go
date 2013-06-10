@@ -38,7 +38,7 @@ func (e UncheckedErrors) Error() string {
 	return fmt.Sprint(len(e.Errors), "unchecked errors")
 }
 
-func CheckPackage(pkgPath string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
+func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) error {
 	pkg, err := findPackage(pkgPath)
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func CheckPackage(pkgPath string, ignore *regexp.Regexp, ignorePkg map[string]bo
 	if len(files) == 0 {
 		return ErrNoGoFiles
 	}
-	return checkFiles(files, ignore, ignorePkg, blank)
+	return checkFiles(files, ignore, blank)
 }
 
 type file struct {
@@ -108,8 +108,7 @@ type checker struct {
 	files     map[string]file
 	callTypes map[*ast.CallExpr]types.Type
 	identObjs map[*ast.Ident]types.Object
-	ignore    *regexp.Regexp
-	ignorePkg map[string]bool
+	ignore    map[string]*regexp.Regexp
 	blank     bool
 
 	errors []error
@@ -144,14 +143,20 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	}
 
 	// If we got an identifier for the function, see if it is ignored
-	// Ignore if in an ignored package
+
+	if re, ok := c.ignore[""]; ok && re.MatchString(id.Name) {
+		return true
+	}
+
 	if obj := c.identObjs[id]; obj != nil {
-		if pkg := obj.Pkg(); pkg != nil && c.ignorePkg[pkg.Path()] {
-			return true
+		if pkg := obj.Pkg(); pkg != nil {
+			if re, ok := c.ignore[pkg.Path()]; ok {
+				return re.MatchString(id.Name)
+			}
 		}
 	}
-	// Ignore if the name matches the regexp
-	return c.ignore != nil && c.ignore.MatchString(id.Name)
+
+	return false
 }
 
 // errorsByArg returns a slice s such that
@@ -237,7 +242,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]bool, blank bool) error {
+func checkFiles(fileNames []string, ignore map[string]*regexp.Regexp, blank bool) error {
 	fset := token.NewFileSet()
 	astFiles := make([]*ast.File, len(fileNames))
 	files := make(map[string]file, len(fileNames))
@@ -256,7 +261,7 @@ func checkFiles(fileNames []string, ignore *regexp.Regexp, ignorePkg map[string]
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, ignorePkg, blank, []error{}}
+	visitor := &checker{fset, files, callTypes, identObjs, ignore, blank, []error{}}
 	for _, astFile := range astFiles {
 		ast.Walk(visitor, astFile)
 	}
