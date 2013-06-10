@@ -1,3 +1,6 @@
+// Package errcheck is the library used to implement the errcheck command-line tool.
+//
+// Note: The API of this package has not been finalized and may change at any point.
 package errcheck
 
 import (
