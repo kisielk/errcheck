@@ -309,6 +309,11 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 	if (buildErr == nil && buildPkg.Goroot) || buildErr != nil {
 		pkg, err = types.GcImport(allImports, path)
 		if err == nil {
+			// err should be != nil if the package is not complete, but this is an
+			// additional check just in case
+			if !pkg.Complete() {
+				return pkg, fmt.Errorf("types.GcImport returned incomplete package: %s", path)
+			}
 			// We don't use imports, but per API we have to add the package.
 			imports[pkg.Path()] = pkg
 			allImports[pkg.Path()] = pkg
@@ -317,13 +322,13 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 	}
 
 	// See if we already imported this package
-	if pkg = allImports[path]; pkg != nil && pkg.Complete() {
+	if pkg = allImports[path]; pkg != nil {
 		return pkg, nil
 	}
 
 	// allImports failed, try to use go/build
 	if buildErr != nil {
-		return nil, buildErr
+		return nil, fmt.Errorf("build.Import failed: %s", buildErr)
 	}
 
 	fileSet := token.NewFileSet()
@@ -375,13 +380,15 @@ func importer(imports map[string]*types.Package, path string) (pkg *types.Packag
 
 	pkg, err = context.Check(name, fileSet, ff...)
 	if err != nil {
-		return pkg, err
+		return pkg, fmt.Errorf("types.Context.Check failed: %s", err)
 	}
+
+	// Succesfuly imported, mark the package as complete
+	pkg = types.NewPackage(pkg.Pos(), pkg.Path(), pkg.Name(), pkg.Scope(), pkg.Imports(), true)
 
 	// We don't use imports, but per API we have to add the package.
 	imports[path] = pkg
 	allImports[path] = pkg
-	// pkg.Complete = true // FIXME Can't assign pkg.Complete in new API
 	return pkg, nil
 }
 
