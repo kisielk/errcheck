@@ -78,14 +78,8 @@ func main() {
 		ignore["fmt"] = dotStar
 	}
 
-	pattern := flag.Arg(0)
-	if pattern == "" {
-		flag.Usage()
-		Fatalf("you must specify a package pattern")
-	}
-
 	var exitStatus int
-	for _, pkgPath := range gotool.MatchPackages(pattern) {
+	for _, pkgPath := range gotool.ImportPaths(flag.Args()) {
 		if err := errcheck.CheckPackage(pkgPath, ignore, *blank); err != nil {
 			if e, ok := err.(errcheck.UncheckedErrors); ok {
 				for _, uncheckedError := range e.Errors {
