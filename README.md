@@ -55,7 +55,15 @@ blank identifier. It takes no arguments.
 
 An example of using errcheck to check the go standard library packages:
 
-    go list std | grep -v cmd | xargs -n 1 errcheck -ignore 'Close|[wW]rite.*|Flush|Seek|[rR]ead.*'> stdlibcheck
+    errcheck -ignore 'Close|[wW]rite.*|Flush|Seek|[rR]ead.*' std > stdlibcheck
+
+Or check all packages in your $GOPATH and $GOROOT:
+
+    errcheck all > allcheck
+
+To check all packages beneath the current directory:
+
+    errcheck ./...
 
 Exit Codes
 ----------
