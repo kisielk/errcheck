@@ -36,16 +36,70 @@ func (e UncheckedErrors) Error() string {
 }
 
 func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) error {
-	pkg, err := findPackage(pkgPath)
+	pkg, err := newPackage(pkgPath)
 	if err != nil {
 		return err
 	}
-	files := getFiles(pkg)
 
-	if len(files) == 0 {
-		return ErrNoGoFiles
+	return checkPackage(pkg, ignore, blank)
+}
+
+type package_ struct {
+	path     string
+	fset     *token.FileSet
+	astFiles []*ast.File
+	files    map[string]file
+}
+
+func newPackage(path string) (package_, error) {
+	p := package_{path: path, fset: token.NewFileSet()}
+	pkg, err := findPackage(path)
+	if err != nil {
+		return p, fmt.Errorf("could not find package: %s", err)
 	}
-	return checkFiles(files, ignore, blank)
+	fileNames := getFiles(pkg)
+
+	if len(fileNames) == 0 {
+		return p, ErrNoGoFiles
+	}
+
+	p.astFiles = make([]*ast.File, len(fileNames))
+	p.files = make(map[string]file, len(fileNames))
+
+	for i, fileName := range fileNames {
+		f, err := parseFile(p.fset, fileName)
+		if err != nil {
+			return p, fmt.Errorf("could not parse %s: %s", fileName, err)
+		}
+		p.files[fileName] = f
+		p.astFiles[i] = f.ast
+	}
+
+	return p, nil
+}
+
+func typeCheck(p package_) (map[*ast.CallExpr]types.Type, map[*ast.Ident]types.Object, error) {
+	callTypes := make(map[*ast.CallExpr]types.Type)
+	identObjs := make(map[*ast.Ident]types.Object)
+
+	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
+		call, ok := x.(*ast.CallExpr)
+		if !ok {
+			return
+		}
+		callTypes[call] = typ
+	}
+	identFn := func(id *ast.Ident, obj types.Object) {
+		identObjs[id] = obj
+	}
+	context := types.Context{
+		Expr:   exprFn,
+		Ident:  identFn,
+		Import: importer.NewImporter().Import,
+	}
+
+	_, err := context.Check(p.path, p.fset, p.astFiles...)
+	return callTypes, identObjs, err
 }
 
 type file struct {
@@ -77,33 +131,8 @@ func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
 	return f, nil
 }
 
-func typeCheck(fset *token.FileSet, astFiles []*ast.File) (map[*ast.CallExpr]types.Type, map[*ast.Ident]types.Object, error) {
-	callTypes := make(map[*ast.CallExpr]types.Type)
-	identObjs := make(map[*ast.Ident]types.Object)
-
-	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
-		call, ok := x.(*ast.CallExpr)
-		if !ok {
-			return
-		}
-		callTypes[call] = typ
-	}
-	identFn := func(id *ast.Ident, obj types.Object) {
-		identObjs[id] = obj
-	}
-	context := types.Context{
-		Expr:   exprFn,
-		Ident:  identFn,
-		Import: importer.NewImporter().Import,
-	}
-
-	_, err := context.Check(astFiles[0].Name.Name, fset, astFiles...)
-	return callTypes, identObjs, err
-}
-
 type checker struct {
-	fset      *token.FileSet
-	files     map[string]file
+	pkg       package_
 	callTypes map[*ast.CallExpr]types.Type
 	identObjs map[*ast.Ident]types.Object
 	ignore    map[string]*regexp.Regexp
@@ -187,8 +216,8 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
-	pos := c.fset.Position(position)
-	line := bytes.TrimSpace(c.files[pos.Filename].lines[pos.Line-1])
+	pos := c.pkg.fset.Position(position)
+	line := bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
 	c.errors = append(c.errors, uncheckedError{pos, line})
 }
 
@@ -240,27 +269,14 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-func checkFiles(fileNames []string, ignore map[string]*regexp.Regexp, blank bool) error {
-	fset := token.NewFileSet()
-	astFiles := make([]*ast.File, len(fileNames))
-	files := make(map[string]file, len(fileNames))
-
-	for i, fileName := range fileNames {
-		f, err := parseFile(fset, fileName)
-		if err != nil {
-			return fmt.Errorf("could not parse %s: %s", fileName, err)
-		}
-		files[fileName] = f
-		astFiles[i] = f.ast
-	}
-
-	callTypes, identObjs, err := typeCheck(fset, astFiles)
+func checkPackage(pkg package_, ignore map[string]*regexp.Regexp, blank bool) error {
+	callTypes, identObjs, err := typeCheck(pkg)
 	if err != nil {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{fset, files, callTypes, identObjs, ignore, blank, []error{}}
-	for _, astFile := range astFiles {
+	visitor := &checker{pkg, callTypes, identObjs, ignore, blank, []error{}}
+	for _, astFile := range pkg.astFiles {
 		ast.Walk(visitor, astFile)
 	}
 
