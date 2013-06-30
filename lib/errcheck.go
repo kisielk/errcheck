@@ -44,6 +44,7 @@ func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) 
 	return checkPackage(pkg, ignore, blank)
 }
 
+// package_ represents a single Go package
 type package_ struct {
 	path     string
 	fset     *token.FileSet
@@ -51,6 +52,7 @@ type package_ struct {
 	files    map[string]file
 }
 
+// newPackage creates a package_ from the Go files in path
 func newPackage(path string) (package_, error) {
 	p := package_{path: path, fset: token.NewFileSet()}
 	pkg, err := findPackage(path)
@@ -78,19 +80,29 @@ func newPackage(path string) (package_, error) {
 	return p, nil
 }
 
-func typeCheck(p package_) (map[*ast.CallExpr]types.Type, map[*ast.Ident]types.Object, error) {
-	callTypes := make(map[*ast.CallExpr]types.Type)
-	identObjs := make(map[*ast.Ident]types.Object)
+// typedPackage is like package_ but with type information
+type typedPackage struct {
+	package_
+	callTypes map[*ast.CallExpr]types.Type
+	identObjs map[*ast.Ident]types.Object
+}
+
+// typeCheck creates a typedPackage from a package_
+func typeCheck(p package_) (typedPackage, error) {
+	tp := typedPackage{
+		callTypes: make(map[*ast.CallExpr]types.Type),
+		identObjs: make(map[*ast.Ident]types.Object),
+	}
 
 	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
 		call, ok := x.(*ast.CallExpr)
 		if !ok {
 			return
 		}
-		callTypes[call] = typ
+		tp.callTypes[call] = typ
 	}
 	identFn := func(id *ast.Ident, obj types.Object) {
-		identObjs[id] = obj
+		tp.identObjs[id] = obj
 	}
 	context := types.Context{
 		Expr:   exprFn,
@@ -99,9 +111,10 @@ func typeCheck(p package_) (map[*ast.CallExpr]types.Type, map[*ast.Ident]types.O
 	}
 
 	_, err := context.Check(p.path, p.fset, p.astFiles...)
-	return callTypes, identObjs, err
+	return tp, err
 }
 
+// file represents a single Go source file
 type file struct {
 	fset  *token.FileSet
 	name  string
@@ -131,12 +144,11 @@ func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
 	return f, nil
 }
 
+// checker implements the errcheck algorithm
 type checker struct {
-	pkg       package_
-	callTypes map[*ast.CallExpr]types.Type
-	identObjs map[*ast.Ident]types.Object
-	ignore    map[string]*regexp.Regexp
-	blank     bool
+	pkg    typedPackage
+	ignore map[string]*regexp.Regexp
+	blank  bool
 
 	errors []error
 }
@@ -175,7 +187,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	if obj := c.identObjs[id]; obj != nil {
+	if obj := c.pkg.identObjs[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
 			if re, ok := c.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
@@ -190,7 +202,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.callTypes[call].(type) {
+	switch t := c.pkg.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
@@ -270,12 +282,12 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 }
 
 func checkPackage(pkg package_, ignore map[string]*regexp.Regexp, blank bool) error {
-	callTypes, identObjs, err := typeCheck(pkg)
+	tp, err := typeCheck(pkg)
 	if err != nil {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{pkg, callTypes, identObjs, ignore, blank, []error{}}
+	visitor := &checker{tp, ignore, blank, []error{}}
 	for _, astFile := range pkg.astFiles {
 		ast.Walk(visitor, astFile)
 	}
