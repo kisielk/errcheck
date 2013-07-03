@@ -10,10 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"io/ioutil"
-	"os"
 	"regexp"
 )
 
@@ -45,15 +43,13 @@ func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) 
 
 // package_ represents a single Go package
 type package_ struct {
-	path     string
-	fset     *token.FileSet
-	astFiles []*ast.File
-	files    map[string]file
+	path  string
+	files map[string]file
 }
 
 // newPackage creates a package_ from the Go files in path
 func newPackage(path string) (package_, error) {
-	p := package_{path: path, fset: token.NewFileSet()}
+	p := package_{path: path}
 	pkg, err := findPackage(path)
 	if err != nil {
 		return p, fmt.Errorf("could not find package: %s", err)
@@ -64,16 +60,14 @@ func newPackage(path string) (package_, error) {
 		return p, ErrNoGoFiles
 	}
 
-	p.astFiles = make([]*ast.File, len(fileNames))
 	p.files = make(map[string]file, len(fileNames))
 
-	for i, fileName := range fileNames {
-		f, err := parseFile(p.fset, fileName)
+	for _, fileName := range fileNames {
+		f, err := readFile(fileName)
 		if err != nil {
-			return p, fmt.Errorf("could not parse %s: %s", fileName, err)
+			return p, fmt.Errorf("could not read %s: %s", fileName, err)
 		}
 		p.files[fileName] = f
-		p.astFiles[i] = f.ast
 	}
 
 	return p, nil
@@ -82,7 +76,8 @@ func newPackage(path string) (package_, error) {
 // typedPackage is like package_ but with type information
 type typedPackage struct {
 	package_
-	info *importer.PackageInfo
+	info     *importer.PackageInfo
+	importer *importer.Importer
 }
 
 // typeCheck creates a typedPackage from a package_
@@ -94,41 +89,29 @@ func typeCheck(p package_) (typedPackage, error) {
 		TypeChecker: context,
 		Loader:      loader,
 	}
-	importer := importer.New(importerContext)
-	info, err := importer.LoadPackage(p.path)
+	imp := importer.New(importerContext)
+	info, err := imp.LoadPackage(p.path)
 	return typedPackage{
 		package_: p,
 		info:     info,
+		importer: imp,
 	}, err
 }
 
 // file represents a single Go source file
 type file struct {
-	fset  *token.FileSet
 	name  string
-	ast   *ast.File
 	lines [][]byte
 }
 
-func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
-	rd, err := os.Open(fileName)
+func readFile(fileName string) (f file, err error) {
+	data, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return f, err
-	}
-	defer rd.Close()
-
-	data, err := ioutil.ReadAll(rd)
-	if err != nil {
-		return f, err
-	}
-
-	astFile, err := parser.ParseFile(fset, fileName, bytes.NewReader(data), parser.ParseComments)
-	if err != nil {
-		return f, fmt.Errorf("could not parse: %s", err)
 	}
 
 	lines := bytes.Split(data, []byte("\n"))
-	f = file{fset: fset, name: fileName, ast: astFile, lines: lines}
+	f = file{name: fileName, lines: lines}
 	return f, nil
 }
 
@@ -176,7 +159,6 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	}
 
 	if obj := c.pkg.info.ObjectOf(id); obj != nil {
-		// if obj := c.pkg.identObjs[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
 			if re, ok := c.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
@@ -192,7 +174,6 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // s[i] == true iff return type at position i from left is an error type
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 	switch t := c.pkg.info.TypeOf(call).(type) {
-	// switch t := c.pkg.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
@@ -218,7 +199,7 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
-	pos := c.pkg.fset.Position(position)
+	pos := c.pkg.importer.Fset.Position(position)
 	line := bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
 	c.errors = append(c.errors, uncheckedError{pos, line})
 }
