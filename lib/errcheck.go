@@ -90,6 +90,7 @@ type typedPackage struct {
 // typeCheck creates a typedPackage from a package_
 func typeCheck(p package_) (typedPackage, error) {
 	tp := typedPackage{
+		package_:  p,
 		callTypes: make(map[*ast.CallExpr]types.Type),
 		identObjs: make(map[*ast.Ident]types.Object),
 	}
