@@ -17,7 +17,7 @@ import (
 
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
-	ErrNoGoFiles = errors.New("package contains no go source files")
+	ErrNoGoFiles = errors.New("package contains no (non-cgo) go source files")
 )
 
 // UncheckedErrors is returned from the CheckPackage function if the package contains
