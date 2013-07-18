@@ -5,7 +5,6 @@ package errcheck
 
 import (
 	"bytes"
-	"code.google.com/p/go.tools/go/exact"
 	"code.google.com/p/go.tools/go/types"
 	"errors"
 	"fmt"
@@ -83,7 +82,7 @@ func newPackage(path string) (package_, error) {
 // typedPackage is like package_ but with type information
 type typedPackage struct {
 	package_
-	callTypes map[*ast.CallExpr]types.Type
+	callTypes map[ast.Expr]types.Type
 	identObjs map[*ast.Ident]types.Object
 }
 
@@ -91,27 +90,17 @@ type typedPackage struct {
 func typeCheck(p package_) (typedPackage, error) {
 	tp := typedPackage{
 		package_:  p,
-		callTypes: make(map[*ast.CallExpr]types.Type),
+		callTypes: make(map[ast.Expr]types.Type),
 		identObjs: make(map[*ast.Ident]types.Object),
 	}
 
-	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
-		call, ok := x.(*ast.CallExpr)
-		if !ok {
-			return
-		}
-		tp.callTypes[call] = typ
+	info := types.Info{
+		Types:   tp.callTypes,
+		Objects: tp.identObjs,
 	}
-	identFn := func(id *ast.Ident, obj types.Object) {
-		tp.identObjs[id] = obj
-	}
-	context := types.Context{
-		Expr:   exprFn,
-		Ident:  identFn,
-		Import: importer.NewImporter().Import,
-	}
+	context := types.Context{Import: importer.NewImporter().Import}
 
-	_, err := context.Check(p.path, p.fset, p.astFiles...)
+	_, err := context.Check(p.path, p.fset, p.astFiles, &info)
 	return tp, err
 }
 
