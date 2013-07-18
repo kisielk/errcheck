@@ -5,19 +5,22 @@ package errcheck
 
 import (
 	"bytes"
+	"code.google.com/p/go.tools/go/exact"
 	"code.google.com/p/go.tools/go/types"
-	"code.google.com/p/go.tools/importer"
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"honnef.co/go/importer"
 	"io/ioutil"
+	"os"
 	"regexp"
 )
 
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
-	ErrNoGoFiles = errors.New("package contains no (non-cgo) go source files")
+	ErrNoGoFiles = errors.New("package contains no go source files")
 )
 
 // UncheckedErrors is returned from the CheckPackage function if the package contains
@@ -43,13 +46,15 @@ func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) 
 
 // package_ represents a single Go package
 type package_ struct {
-	path  string
-	files map[string]file
+	path     string
+	fset     *token.FileSet
+	astFiles []*ast.File
+	files    map[string]file
 }
 
 // newPackage creates a package_ from the Go files in path
 func newPackage(path string) (package_, error) {
-	p := package_{path: path}
+	p := package_{path: path, fset: token.NewFileSet()}
 	pkg, err := findPackage(path)
 	if err != nil {
 		return p, fmt.Errorf("could not find package: %s", err)
@@ -60,14 +65,16 @@ func newPackage(path string) (package_, error) {
 		return p, ErrNoGoFiles
 	}
 
+	p.astFiles = make([]*ast.File, len(fileNames))
 	p.files = make(map[string]file, len(fileNames))
 
-	for _, fileName := range fileNames {
-		f, err := readFile(fileName)
+	for i, fileName := range fileNames {
+		f, err := parseFile(p.fset, fileName)
 		if err != nil {
-			return p, fmt.Errorf("could not read %s: %s", fileName, err)
+			return p, fmt.Errorf("could not parse %s: %s", fileName, err)
 		}
 		p.files[fileName] = f
+		p.astFiles[i] = f.ast
 	}
 
 	return p, nil
@@ -76,42 +83,65 @@ func newPackage(path string) (package_, error) {
 // typedPackage is like package_ but with type information
 type typedPackage struct {
 	package_
-	info     *importer.PackageInfo
-	importer *importer.Importer
+	callTypes map[*ast.CallExpr]types.Type
+	identObjs map[*ast.Ident]types.Object
 }
 
 // typeCheck creates a typedPackage from a package_
 func typeCheck(p package_) (typedPackage, error) {
-	context := types.Context{}
-
-	loader := importer.MakeGoBuildLoader(nil)
-	importerContext := &importer.Context{
-		TypeChecker: context,
-		Loader:      loader,
+	tp := typedPackage{
+		package_:  p,
+		callTypes: make(map[*ast.CallExpr]types.Type),
+		identObjs: make(map[*ast.Ident]types.Object),
 	}
-	imp := importer.New(importerContext)
-	info, err := imp.LoadPackage(p.path)
-	return typedPackage{
-		package_: p,
-		info:     info,
-		importer: imp,
-	}, err
+
+	exprFn := func(x ast.Expr, typ types.Type, val exact.Value) {
+		call, ok := x.(*ast.CallExpr)
+		if !ok {
+			return
+		}
+		tp.callTypes[call] = typ
+	}
+	identFn := func(id *ast.Ident, obj types.Object) {
+		tp.identObjs[id] = obj
+	}
+	context := types.Context{
+		Expr:   exprFn,
+		Ident:  identFn,
+		Import: importer.NewImporter().Import,
+	}
+
+	_, err := context.Check(p.path, p.fset, p.astFiles...)
+	return tp, err
 }
 
 // file represents a single Go source file
 type file struct {
+	fset  *token.FileSet
 	name  string
+	ast   *ast.File
 	lines [][]byte
 }
 
-func readFile(fileName string) (f file, err error) {
-	data, err := ioutil.ReadFile(fileName)
+func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
+	rd, err := os.Open(fileName)
+	if err != nil {
+		return f, err
+	}
+	defer rd.Close()
+
+	data, err := ioutil.ReadAll(rd)
 	if err != nil {
 		return f, err
 	}
 
+	astFile, err := parser.ParseFile(fset, fileName, bytes.NewReader(data), parser.ParseComments)
+	if err != nil {
+		return f, fmt.Errorf("could not parse: %s", err)
+	}
+
 	lines := bytes.Split(data, []byte("\n"))
-	f = file{name: fileName, lines: lines}
+	f = file{fset: fset, name: fileName, ast: astFile, lines: lines}
 	return f, nil
 }
 
@@ -158,7 +188,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	if obj := c.pkg.info.ObjectOf(id); obj != nil {
+	if obj := c.pkg.identObjs[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
 			if re, ok := c.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
@@ -173,7 +203,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.pkg.info.TypeOf(call).(type) {
+	switch t := c.pkg.callTypes[call].(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
@@ -199,7 +229,7 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
-	pos := c.pkg.importer.Fset.Position(position)
+	pos := c.pkg.fset.Position(position)
 	line := bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
 	c.errors = append(c.errors, uncheckedError{pos, line})
 }
@@ -259,7 +289,7 @@ func checkPackage(pkg package_, ignore map[string]*regexp.Regexp, blank bool) er
 	}
 
 	visitor := &checker{tp, ignore, blank, []error{}}
-	for _, astFile := range tp.info.Files {
+	for _, astFile := range pkg.astFiles {
 		ast.Walk(visitor, astFile)
 	}
 
