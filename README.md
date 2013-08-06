@@ -69,7 +69,7 @@ Exit Codes
 ----------
 
 errcheck returns 1 if any problems were found in the checked files.
-It returns 2 on any if there were any other failures.
+It returns 2 if there were any other failures.
 
 Editor Integration
 ==================
