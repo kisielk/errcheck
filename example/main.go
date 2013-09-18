@@ -38,4 +38,7 @@ func main() {
 	// Additional cases for assigning errors to blank identifier
 	z, _ := b()
 	_, w := a(), 5
+
+	// Goroutine
+	go a()
 }
