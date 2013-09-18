@@ -31,7 +31,7 @@ type UncheckedErrors struct {
 }
 
 func (e UncheckedErrors) Error() string {
-	return fmt.Sprint(len(e.Errors), "unchecked errors")
+	return fmt.Sprintln(len(e.Errors), "unchecked errors")
 }
 
 func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) error {
