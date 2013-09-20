@@ -36,13 +36,12 @@ func init() {
 
 	for fileName, file := range astPkg["main"].Files {
 		for _, comment := range file.Comments {
-			c := comment.List[0]
-			text := c.Text
-			line := fset.Position(c.Slash).Line
+			text := comment.Text()
+			line := fset.Position(comment.Pos()).Line
 			switch text {
-			case "// UNCHECKED":
+			case "UNCHECKED\n":
 				unchecked[marker{fileName, line}] = true
-			case "// BLANK":
+			case "BLANK\n":
 				blank[marker{fileName, line}] = true
 			}
 		}
