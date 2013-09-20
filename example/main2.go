@@ -6,7 +6,7 @@ import "fmt"
 type t struct{}
 
 func (x t) a() error {
-	fmt.Println("this method returns an error")
+	fmt.Println("this method returns an error") // UNCHECKED
 	return nil
 }
 
