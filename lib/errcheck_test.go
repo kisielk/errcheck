@@ -35,7 +35,7 @@ func Test(t *testing.T) {
 	}
 
 	if len(uerr.Errors) != 15 {
-		t.Error("got %d errors, want 15", len(uerr.Errors))
+		t.Errorf("got %d errors, want 15", len(uerr.Errors))
 		for i, err := range uerr.Errors {
 			t.Errorf("%d: %v", i, err)
 		}
@@ -45,16 +45,16 @@ func Test(t *testing.T) {
 	for i, err := range uerr.Errors {
 		uerr, ok := err.(uncheckedError)
 		if !ok {
-			t.Errorf("%d: not an uncheckedError, got %v", err)
+			t.Errorf("%d: not an uncheckedError, got %v", i, err)
 			continue
 		}
 
 		expected := expectedErrors[i]
 		if !strings.HasSuffix(uerr.pos.String(), expected.pos) {
-			t.Errorf("%d: wrong position: got %q, want %q", uerr.pos.String(), expected.pos)
+			t.Errorf("%d: wrong position: got %q, want %q", i, uerr.pos.String(), expected.pos)
 		}
 		if errLine := string(uerr.line); errLine != expected.line {
-			t.Error("%d: wrong line: got %q, want %q", errLine, expected.line)
+			t.Errorf("%d: wrong line: got %q, want %q", i, errLine, expected.line)
 		}
 	}
 }
