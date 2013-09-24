@@ -232,17 +232,11 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 	case *ast.GoStmt:
-		//BUG(kisielk) This won't work till
-		// http://code.google.com/p/go/issues/detail?id=6413 is fixed.
 		if !c.ignoreCall(stmt.Call) && c.callReturnsError(stmt.Call) {
-			fmt.Println("added error")
 			c.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.DeferStmt:
-		//BUG(kisielk) This won't work till
-		// http://code.google.com/p/go/issues/detail?id=6413 is fixed.
 		if !c.ignoreCall(stmt.Call) && c.callReturnsError(stmt.Call) {
-			fmt.Println("added error")
 			c.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.AssignStmt:

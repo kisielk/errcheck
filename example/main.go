@@ -42,5 +42,6 @@ func main() {
 	_ = z + w // Avoid complaints about unused variables
 
 	// Goroutine
-	go a()
+	go a()    // UNCHECKED
+	defer a() // UNCHECKED
 }
