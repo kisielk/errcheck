@@ -32,7 +32,7 @@ func (f ignoreFlag) String() string {
 		}
 		pairs = append(pairs, prefix+re.String())
 	}
-	return strings.Join(pairs, ",")
+	return fmt.Sprintf("%q", strings.Join(pairs, ","))
 }
 
 func (f ignoreFlag) Set(s string) error {
@@ -58,10 +58,12 @@ func (f ignoreFlag) Set(s string) error {
 	return nil
 }
 
-func main() {
-	dotStar := regexp.MustCompile(".*")
+var dotStar = regexp.MustCompile(".*")
 
-	ignore := ignoreFlag(make(map[string]*regexp.Regexp))
+func main() {
+	ignore := ignoreFlag(map[string]*regexp.Regexp{
+		"fmt": dotStar,
+	})
 	flag.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
 	ignorePkg := flag.String("ignorepkg", "", "comma-separated list of package paths to ignore")
@@ -72,10 +74,6 @@ func main() {
 		if pkg != "" {
 			ignore[pkg] = dotStar
 		}
-	}
-
-	if _, ok := ignore["fmt"]; !ok {
-		ignore["fmt"] = dotStar
 	}
 
 	var exitStatus int
