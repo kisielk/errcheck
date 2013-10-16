@@ -98,7 +98,7 @@ func typeCheck(p package_) (typedPackage, error) {
 		Types:   tp.callTypes,
 		Objects: tp.identObjs,
 	}
-	context := types.Config{Import: importer.NewImporter().Import}
+	context := types.Config{Import: importer.New().Import}
 
 	_, err := context.Check(p.path, p.fset, p.astFiles, &info)
 	return tp, err
