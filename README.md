@@ -82,3 +82,9 @@ Emacs
 [go-errcheck.el](https://github.com/dominikh/go-errcheck.el)
 integrates errcheck with Emacs by providing a `go-errcheck` command
 and customizable variables to automatically pass flags to errcheck.
+
+Vim
+---
+
+[go-errcheck-vim](https://github.com/mattn/go-errcheck-vim)
+integrates errcheck with Vim's quickfix.
