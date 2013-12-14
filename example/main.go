@@ -12,6 +12,14 @@ func b() (int, error) {
 	return 0, nil
 }
 
+func rec() {
+	defer func() {
+		recover()     // UNCHECKED
+		_ = recover() // BLANK
+	}()
+	defer recover() // UNCHECKED
+}
+
 func main() {
 	// Single error return
 	_ = a() // BLANK

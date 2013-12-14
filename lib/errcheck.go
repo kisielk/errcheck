@@ -5,16 +5,17 @@ package errcheck
 
 import (
 	"bytes"
-	"code.google.com/p/go.tools/go/types"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"honnef.co/go/importer"
 	"io/ioutil"
 	"os"
 	"regexp"
+
+	"code.google.com/p/go.tools/go/types"
+	"honnef.co/go/importer"
 )
 
 var (
@@ -34,6 +35,12 @@ func (e UncheckedErrors) Error() string {
 	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
 }
 
+// CheckPackage checks a package at pkgPath for errors.
+// ignore is a map of package names to regular expressions. Identifiers from a package are
+// checked against its regular expressions and if any of the expressions match the call
+// is not checked.
+// If blank is true then assignments to the blank identifier are also considered to be
+// ignored errors.
 func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) error {
 	pkg, err := newPackage(pkgPath)
 	if err != nil {
@@ -209,12 +216,21 @@ func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 }
 
 func (c *checker) callReturnsError(call *ast.CallExpr) bool {
+	if isRecover(call) {
+		return true
+	}
 	for _, isError := range c.errorsByArg(call) {
 		if isError {
 			return true
 		}
 	}
 	return false
+}
+
+// isRecover returns true if the given CallExpr is a call to the built-in recover() function.
+func isRecover(call *ast.CallExpr) bool {
+	fun, ok := call.Fun.(*ast.Ident)
+	return ok && fun.Name == "recover"
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
@@ -252,7 +268,9 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 				isError := c.errorsByArg(call)
 				for i := 0; i < len(stmt.Lhs); i++ {
 					if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
-						if id.Name == "_" && isError[i] {
+						// We shortcut calls to recover() because errorsByArg can't
+						// check its return types for errors since it returns interface{}.
+						if id.Name == "_" && (isRecover(call) || isError[i]) {
 							c.addErrorAtPosition(id.NamePos)
 						}
 					}

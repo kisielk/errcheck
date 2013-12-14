@@ -48,7 +48,8 @@ func init() {
 	}
 }
 
-func Test(t *testing.T) {
+// TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
+func TestUnchecked(t *testing.T) {
 	err := CheckPackage("github.com/kisielk/errcheck/example", make(map[string]*regexp.Regexp), false)
 	uerr, ok := err.(UncheckedErrors)
 	if !ok {
@@ -77,6 +78,7 @@ func Test(t *testing.T) {
 	}
 }
 
+// TestBlank is like TestUnchecked but also ensures assignments to the blank identifier are caught.
 func TestBlank(t *testing.T) {
 	err := CheckPackage("github.com/kisielk/errcheck/example", make(map[string]*regexp.Regexp), true)
 	uerr, ok := err.(UncheckedErrors)
