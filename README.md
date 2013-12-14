@@ -3,7 +3,7 @@ errcheck
 
 errcheck is a program for checking for unchecked errors in go programs.
 
-[![Build Status](https://drone.io/github.com/kisielk/errcheck/status.png)](https://drone.io/github.com/kisielk/errcheck/latest)
+[![Build Status](https://travis-ci.org/kisielk/errcheck.png?branch=master)](https://travis-ci.org/kisielk/errcheck)
 
 Install
 -------
