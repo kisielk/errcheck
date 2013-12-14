@@ -216,7 +216,7 @@ func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 }
 
 func (c *checker) callReturnsError(call *ast.CallExpr) bool {
-	if isRecover(call) {
+	if c.isRecover(call) {
 		return true
 	}
 	for _, isError := range c.errorsByArg(call) {
@@ -228,9 +228,13 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 // isRecover returns true if the given CallExpr is a call to the built-in recover() function.
-func isRecover(call *ast.CallExpr) bool {
-	fun, ok := call.Fun.(*ast.Ident)
-	return ok && fun.Name == "recover"
+func (c *checker) isRecover(call *ast.CallExpr) bool {
+	if fun, ok := call.Fun.(*ast.Ident); ok {
+		if _, ok := c.pkg.identObjs[fun].(*types.Builtin); ok {
+			return fun.Name == "recover"
+		}
+	}
+	return false
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
@@ -270,7 +274,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 					if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
 						// We shortcut calls to recover() because errorsByArg can't
 						// check its return types for errors since it returns interface{}.
-						if id.Name == "_" && (isRecover(call) || isError[i]) {
+						if id.Name == "_" && (c.isRecover(call) || isError[i]) {
 							c.addErrorAtPosition(id.NamePos)
 						}
 					}
