@@ -15,7 +15,7 @@ import (
 	"regexp"
 
 	"code.google.com/p/go.tools/go/types"
-	"honnef.co/go/importer"
+	"github.com/dominikh/go-importer"
 )
 
 var (
