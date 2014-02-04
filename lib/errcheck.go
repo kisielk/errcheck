@@ -89,7 +89,7 @@ func newPackage(path string) (package_, error) {
 // typedPackage is like package_ but with type information
 type typedPackage struct {
 	package_
-	callTypes map[ast.Expr]types.Type
+	callTypes map[ast.Expr]types.TypeAndValue
 	identObjs map[*ast.Ident]types.Object
 }
 
@@ -97,7 +97,7 @@ type typedPackage struct {
 func typeCheck(p package_) (typedPackage, error) {
 	tp := typedPackage{
 		package_:  p,
-		callTypes: make(map[ast.Expr]types.Type),
+		callTypes: make(map[ast.Expr]types.TypeAndValue),
 		identObjs: make(map[*ast.Ident]types.Object),
 	}
 
@@ -199,7 +199,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.pkg.callTypes[call].(type) {
+	switch t := c.pkg.callTypes[call].Type.(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
