@@ -1,19 +1,17 @@
-errcheck
+# errcheck
 ========
 
 errcheck is a program for checking for unchecked errors in go programs.
 
 [![Build Status](https://travis-ci.org/kisielk/errcheck.png?branch=master)](https://travis-ci.org/kisielk/errcheck)
 
-Install
--------
+## Install
 
     go get github.com/kisielk/errcheck
 
 errcheck requires Go 1.1 and depends on the go/types package from the go.tools repository.
 
-Use
----
+## Use
 
 For basic usage, just give the package path of interest as the first
 argument:
@@ -67,24 +65,31 @@ To check all packages beneath the current directory:
 
     errcheck ./...
 
-Exit Codes
-----------
+## Cgo
+
+Currently errcheck is unable to check packages that `import "C"` due to limitations
+in the importer.
+
+However, you can use errcheck on packages that depend on those which use cgo. In
+order for this to work you need to `go install` the cgo dependencies before running
+errcheck on the dependant packages.
+
+See https://github.com/kisielk/errcheck/issues/16 for more details.
+
+## Exit Codes
 
 errcheck returns 1 if any problems were found in the checked files.
 It returns 2 if there were any other failures.
 
-Editor Integration
-==================
+# Editor Integration
 
-Emacs
------
+## Emacs
 
 [go-errcheck.el](https://github.com/dominikh/go-errcheck.el)
 integrates errcheck with Emacs by providing a `go-errcheck` command
 and customizable variables to automatically pass flags to errcheck.
 
-Vim
----
+## Vim
 
 [go-errcheck-vim](https://github.com/mattn/go-errcheck-vim)
 integrates errcheck with Vim's quickfix.

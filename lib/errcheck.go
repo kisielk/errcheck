@@ -105,7 +105,11 @@ func typeCheck(p package_) (typedPackage, error) {
 		Types:   tp.callTypes,
 		Objects: tp.identObjs,
 	}
-	context := types.Config{Import: importer.New().Import}
+	imp := importer.New()
+	// Preliminary cgo support.
+	// https://github.com/kisielk/errcheck/issues/16#issuecomment-26436917
+	imp.Config = importer.Config{UseGcFallback: true}
+	context := types.Config{Import: imp.Import}
 
 	_, err := context.Check(p.path, p.fset, p.astFiles, &info)
 	return tp, err
