@@ -90,7 +90,8 @@ func newPackage(path string) (package_, error) {
 type typedPackage struct {
 	package_
 	callTypes map[ast.Expr]types.TypeAndValue
-	identObjs map[*ast.Ident]types.Object
+	defs      map[*ast.Ident]types.Object
+	uses      map[*ast.Ident]types.Object
 }
 
 // typeCheck creates a typedPackage from a package_
@@ -98,12 +99,14 @@ func typeCheck(p package_) (typedPackage, error) {
 	tp := typedPackage{
 		package_:  p,
 		callTypes: make(map[ast.Expr]types.TypeAndValue),
-		identObjs: make(map[*ast.Ident]types.Object),
+		defs:      make(map[*ast.Ident]types.Object),
+		uses:      make(map[*ast.Ident]types.Object),
 	}
 
 	info := types.Info{
-		Types:   tp.callTypes,
-		Objects: tp.identObjs,
+		Types: tp.callTypes,
+		Defs:  tp.defs,
+		Uses:  tp.uses,
 	}
 	imp := importer.New()
 	// Preliminary cgo support.
@@ -188,7 +191,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	if obj := c.pkg.identObjs[id]; obj != nil {
+	if obj := c.pkg.uses[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
 			if re, ok := c.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
@@ -234,7 +237,7 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 // isRecover returns true if the given CallExpr is a call to the built-in recover() function.
 func (c *checker) isRecover(call *ast.CallExpr) bool {
 	if fun, ok := call.Fun.(*ast.Ident); ok {
-		if _, ok := c.pkg.identObjs[fun].(*types.Builtin); ok {
+		if _, ok := c.pkg.uses[fun].(*types.Builtin); ok {
 			return fun.Name == "recover"
 		}
 	}
