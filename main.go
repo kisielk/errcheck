@@ -18,7 +18,15 @@ func Err(s string, args ...interface{}) {
 // Fatal calls Err followed by os.Exit(2)
 func Fatalf(s string, args ...interface{}) {
 	Err(s, args...)
-	os.Exit(2)
+	Exit(2)
+}
+
+// Exit calls os.Exit, sets code to 0 if zero flag is true
+func Exit(code int) {
+	if zero {
+		code = 0
+	}
+	os.Exit(code)
 }
 
 type ignoreFlag map[string]*regexp.Regexp
@@ -59,6 +67,7 @@ func (f ignoreFlag) Set(s string) error {
 }
 
 var dotStar = regexp.MustCompile(".*")
+var zero bool
 
 func main() {
 	ignore := ignoreFlag(map[string]*regexp.Regexp{
@@ -68,6 +77,7 @@ func main() {
 		"            the regex is used to ignore names within pkg")
 	ignorePkg := flag.String("ignorepkg", "", "comma-separated list of package paths to ignore")
 	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
+	flag.BoolVar(&zero, "zero", false, "if true, always exit with status 0")
 	flag.Parse()
 
 	for _, pkg := range strings.Split(*ignorePkg, ",") {
@@ -92,5 +102,5 @@ func main() {
 			Fatalf("failed to check package %s: %s", pkgPath, err)
 		}
 	}
-	os.Exit(exitStatus)
+	Exit(exitStatus)
 }
