@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+        "strings"
 
 	"code.google.com/p/go.tools/go/types"
 	"honnef.co/go/importer"
@@ -60,6 +61,7 @@ type package_ struct {
 
 // newPackage creates a package_ from the Go files in path
 func newPackage(path string) (package_, error) {
+        path = strings.ToLower(path) // case insensitive issue #38
 	p := package_{path: path, fset: token.NewFileSet()}
 	pkg, err := findPackage(path)
 	if err != nil {
