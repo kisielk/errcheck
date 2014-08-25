@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
@@ -63,6 +64,9 @@ func newPackage(path string) (package_, error) {
 	p := package_{path: path, fset: token.NewFileSet()}
 	pkg, err := findPackage(path)
 	if err != nil {
+		if _, ok := err.(*build.NoGoError); ok {
+			return p, ErrNoGoFiles
+		}
 		return p, fmt.Errorf("could not find package: %s", err)
 	}
 	fileNames := getFiles(pkg)

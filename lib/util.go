@@ -20,6 +20,9 @@ func findPackage(path string) (*build.Package, error) {
 	// First try to treat path as import path...
 	pkg, err1 = ctx.Import(path, ".", 0)
 	if err1 != nil {
+		if _, ok := err1.(*build.NoGoError); ok {
+			return nil, err1
+		}
 		// ... then attempt as file path
 		pkg, err2 = ctx.ImportDir(path, 0)
 	}
