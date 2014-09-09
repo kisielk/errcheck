@@ -250,7 +250,10 @@ func (c *checker) isRecover(call *ast.CallExpr) bool {
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
 	pos := c.pkg.fset.Position(position)
-	line := bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
+	var line []byte
+	if pos.Line-1 < len(c.pkg.files[pos.Filename].lines) {
+		line = bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
+	}
 	c.errors = append(c.errors, uncheckedError{pos, line})
 }
 
