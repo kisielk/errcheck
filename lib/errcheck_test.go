@@ -34,15 +34,15 @@ func init() {
 		panic("failed to parse test package")
 	}
 
-	for fileName, file := range astPkg["main"].Files {
+	for _, file := range astPkg["main"].Files {
 		for _, comment := range file.Comments {
 			text := comment.Text()
-			line := fset.Position(comment.Pos()).Line
+			pos := fset.Position(comment.Pos())
 			switch text {
 			case "UNCHECKED\n":
-				unchecked[marker{fileName, line}] = true
+				unchecked[marker{pos.Filename, pos.Line}] = true
 			case "BLANK\n":
-				blank[marker{fileName, line}] = true
+				blank[marker{pos.Filename, pos.Line}] = true
 			}
 		}
 	}
