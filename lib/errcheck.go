@@ -4,19 +4,17 @@
 package errcheck
 
 import (
-	"bytes"
+	"bufio"
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/build"
-	"go/parser"
 	"go/token"
-	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 
+	"code.google.com/p/go.tools/go/loader"
 	"code.google.com/p/go.tools/go/types"
-	"honnef.co/go/importer"
 )
 
 var (
@@ -36,138 +34,65 @@ func (e UncheckedErrors) Error() string {
 	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
 }
 
-// CheckPackage checks a package at pkgPath for errors.
+// CheckPackages checks packages for errors.
 // ignore is a map of package names to regular expressions. Identifiers from a package are
 // checked against its regular expressions and if any of the expressions match the call
 // is not checked.
 // If blank is true then assignments to the blank identifier are also considered to be
 // ignored errors.
-func CheckPackage(pkgPath string, ignore map[string]*regexp.Regexp, blank bool) error {
-	pkg, err := newPackage(pkgPath)
-	if err != nil {
-		return err
+func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bool) error {
+	var loadcfg = loader.Config{
+		SourceImports: true,
+		AllowErrors:   false,
+	}
+	for _, p := range pkgPaths {
+		loadcfg.Import(p)
 	}
 
-	return checkPackage(pkg, ignore, blank)
-}
-
-// package_ represents a single Go package
-type package_ struct {
-	path     string
-	fset     *token.FileSet
-	astFiles []*ast.File
-	files    map[string]file
-}
-
-// newPackage creates a package_ from the Go files in path
-func newPackage(path string) (package_, error) {
-	p := package_{path: path, fset: token.NewFileSet()}
-	pkg, err := findPackage(path)
+	program, err := loadcfg.Load()
 	if err != nil {
-		if _, ok := err.(*build.NoGoError); ok {
-			return p, ErrNoGoFiles
+		return fmt.Errorf("could not type check: %s", err)
+	}
+
+	visitor := &checker{program, nil, ignore, blank, make(map[string][]string), []error{}}
+	for _, p := range pkgPaths {
+		if p == "unsafe" { // not a real package
+			continue
 		}
-		return p, fmt.Errorf("could not find package: %s", err)
-	}
-	fileNames := getFiles(pkg)
-
-	if len(fileNames) == 0 {
-		return p, ErrNoGoFiles
-	}
-
-	p.astFiles = make([]*ast.File, len(fileNames))
-	p.files = make(map[string]file, len(fileNames))
-
-	for i, fileName := range fileNames {
-		f, err := parseFile(p.fset, fileName)
-		if err != nil {
-			return p, fmt.Errorf("could not parse %s: %s", fileName, err)
+		visitor.pkg = program.Imported[p]
+		for _, astFile := range visitor.pkg.Files {
+			ast.Walk(visitor, astFile)
 		}
-		p.files[fileName] = f
-		p.astFiles[i] = f.ast
 	}
 
-	return p, nil
-}
-
-// typedPackage is like package_ but with type information
-type typedPackage struct {
-	package_
-	callTypes map[ast.Expr]types.TypeAndValue
-	defs      map[*ast.Ident]types.Object
-	uses      map[*ast.Ident]types.Object
-}
-
-// typeCheck creates a typedPackage from a package_
-func typeCheck(p package_) (typedPackage, error) {
-	tp := typedPackage{
-		package_:  p,
-		callTypes: make(map[ast.Expr]types.TypeAndValue),
-		defs:      make(map[*ast.Ident]types.Object),
-		uses:      make(map[*ast.Ident]types.Object),
+	if len(visitor.errors) > 0 {
+		return UncheckedErrors{visitor.errors}
 	}
-
-	info := types.Info{
-		Types: tp.callTypes,
-		Defs:  tp.defs,
-		Uses:  tp.uses,
-	}
-	imp := importer.New()
-	// Preliminary cgo support.
-	// https://github.com/kisielk/errcheck/issues/16#issuecomment-26436917
-	imp.Config = importer.Config{UseGcFallback: true}
-	context := types.Config{Import: imp.Import}
-
-	_, err := context.Check(p.path, p.fset, p.astFiles, &info)
-	return tp, err
-}
-
-// file represents a single Go source file
-type file struct {
-	fset  *token.FileSet
-	name  string
-	ast   *ast.File
-	lines [][]byte
-}
-
-func parseFile(fset *token.FileSet, fileName string) (f file, err error) {
-	rd, err := os.Open(fileName)
-	if err != nil {
-		return f, err
-	}
-	defer rd.Close()
-
-	data, err := ioutil.ReadAll(rd)
-	if err != nil {
-		return f, err
-	}
-
-	astFile, err := parser.ParseFile(fset, fileName, bytes.NewReader(data), parser.ParseComments)
-	if err != nil {
-		return f, fmt.Errorf("could not parse: %s", err)
-	}
-
-	lines := bytes.Split(data, []byte("\n"))
-	f = file{fset: fset, name: fileName, ast: astFile, lines: lines}
-	return f, nil
+	return nil
 }
 
 // checker implements the errcheck algorithm
 type checker struct {
-	pkg    typedPackage
+	prog   *loader.Program
+	pkg    *loader.PackageInfo
 	ignore map[string]*regexp.Regexp
 	blank  bool
+	lines  map[string][]string
 
 	errors []error
 }
 
 type uncheckedError struct {
 	pos  token.Position
-	line []byte
+	line string
 }
 
 func (e uncheckedError) Error() string {
-	return fmt.Sprintf("%s\t%s", e.pos, e.line)
+	pos := e.pos.String()
+	if i := strings.Index(pos, "/src/"); i != -1 {
+		pos = pos[i+len("/src/"):]
+	}
+	return fmt.Sprintf("%s\t%s", pos, e.line)
 }
 
 func (c *checker) ignoreCall(call *ast.CallExpr) bool {
@@ -195,7 +120,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	if obj := c.pkg.uses[id]; obj != nil {
+	if obj := c.pkg.Uses[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
 			if re, ok := c.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
@@ -210,7 +135,7 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.pkg.callTypes[call].Type.(type) {
+	switch t := c.pkg.Types[call].Type.(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
@@ -241,7 +166,7 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 // isRecover returns true if the given CallExpr is a call to the built-in recover() function.
 func (c *checker) isRecover(call *ast.CallExpr) bool {
 	if fun, ok := call.Fun.(*ast.Ident); ok {
-		if _, ok := c.pkg.uses[fun].(*types.Builtin); ok {
+		if _, ok := c.pkg.Uses[fun].(*types.Builtin); ok {
 			return fun.Name == "recover"
 		}
 	}
@@ -249,12 +174,32 @@ func (c *checker) isRecover(call *ast.CallExpr) bool {
 }
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
-	pos := c.pkg.fset.Position(position)
-	var line []byte
-	if pos.Line-1 < len(c.pkg.files[pos.Filename].lines) {
-		line = bytes.TrimSpace(c.pkg.files[pos.Filename].lines[pos.Line-1])
+	pos := c.prog.Fset.Position(position)
+	lines, ok := c.lines[pos.Filename]
+	if !ok {
+		lines = readfile(pos.Filename)
+		c.lines[pos.Filename] = lines
+	}
+
+	line := "??"
+	if pos.Line-1 < len(lines) {
+		line = strings.TrimSpace(lines[pos.Line-1])
 	}
 	c.errors = append(c.errors, uncheckedError{pos, line})
+}
+
+func readfile(filename string) []string {
+	var f, err = os.Open(filename)
+	if err != nil {
+		return nil
+	}
+
+	var lines []string
+	var scanner = bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines
 }
 
 func (c *checker) Visit(node ast.Node) ast.Visitor {
@@ -313,23 +258,6 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 	default:
 	}
 	return c
-}
-
-func checkPackage(pkg package_, ignore map[string]*regexp.Regexp, blank bool) error {
-	tp, err := typeCheck(pkg)
-	if err != nil {
-		return fmt.Errorf("could not type check: %s", err)
-	}
-
-	visitor := &checker{tp, ignore, blank, []error{}}
-	for _, astFile := range pkg.astFiles {
-		ast.Walk(visitor, astFile)
-	}
-
-	if len(visitor.errors) > 0 {
-		return UncheckedErrors{visitor.errors}
-	}
-	return nil
 }
 
 type obj interface {

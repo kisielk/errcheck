@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/kisielk/errcheck/lib"
-	"github.com/kisielk/gotool"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/kisielk/errcheck/lib"
+	"github.com/kisielk/gotool"
 )
 
 // Err prints an error to Stderr
@@ -76,21 +77,18 @@ func main() {
 		}
 	}
 
-	var exitStatus int
-	for _, pkgPath := range gotool.ImportPaths(flag.Args()) {
-		if err := errcheck.CheckPackage(pkgPath, ignore, *blank); err != nil {
-			if e, ok := err.(errcheck.UncheckedErrors); ok {
-				for _, uncheckedError := range e.Errors {
-					fmt.Println(uncheckedError)
-				}
-				exitStatus = 1
-				continue
-			} else if err == errcheck.ErrNoGoFiles {
-				fmt.Fprintln(os.Stderr, err)
-				continue
+	var pkgPaths = gotool.ImportPaths(flag.Args())
+	if err := errcheck.CheckPackages(pkgPaths, ignore, *blank); err != nil {
+		if e, ok := err.(errcheck.UncheckedErrors); ok {
+			for _, uncheckedError := range e.Errors {
+				fmt.Println(uncheckedError)
 			}
-			Fatalf("failed to check package %s: %s", pkgPath, err)
+			os.Exit(1)
+		} else if err == errcheck.ErrNoGoFiles {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(0)
 		}
+		Fatalf("failed to check package: %s", err)
 	}
-	os.Exit(exitStatus)
+	os.Exit(0)
 }
