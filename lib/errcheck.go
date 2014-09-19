@@ -41,10 +41,7 @@ func (e UncheckedErrors) Error() string {
 // If blank is true then assignments to the blank identifier are also considered to be
 // ignored errors.
 func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bool) error {
-	var loadcfg = loader.Config{
-		SourceImports: true,
-		AllowErrors:   false,
-	}
+	loadcfg := loader.Config{SourceImports: true}
 	for _, p := range pkgPaths {
 		loadcfg.Import(p)
 	}
