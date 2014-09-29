@@ -12,6 +12,11 @@ func b() (int, error) {
 	return 0, nil
 }
 
+func c() int {
+	fmt.Println("this function returns an int") // UNCHECKED
+	return 7
+}
+
 func rec() {
 	defer func() {
 		recover()     // UNCHECKED
@@ -46,6 +51,9 @@ func main() {
 	// Additional cases for assigning errors to blank identifier
 	z, _ := b()    // BLANK
 	_, w := a(), 5 // BLANK
+
+	// Assign non error to blank identifier
+	_ = c()
 
 	_ = z + w // Avoid complaints about unused variables
 
