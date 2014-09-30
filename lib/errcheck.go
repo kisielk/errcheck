@@ -145,7 +145,7 @@ func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 		}
 		return s
 	}
-	return nil
+	return []bool{false}
 }
 
 func (c *checker) callReturnsError(call *ast.CallExpr) bool {
