@@ -69,7 +69,7 @@ func main() {
 		"            the regex is used to ignore names within pkg")
 	ignorePkg := flag.String("ignorepkg", "", "comma-separated list of package paths to ignore")
 	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
-	types := flag.Bool("types", false, "if true, check for ignored type assertion results")
+	asserts := flag.Bool("asserts", false, "if true, check for ignored type assertion results")
 	flag.Parse()
 
 	for _, pkg := range strings.Split(*ignorePkg, ",") {
@@ -79,7 +79,7 @@ func main() {
 	}
 
 	var pkgPaths = gotool.ImportPaths(flag.Args())
-	if err := errcheck.CheckPackages(pkgPaths, ignore, *blank, *types); err != nil {
+	if err := errcheck.CheckPackages(pkgPaths, ignore, *blank, *asserts); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
 				fmt.Println(uncheckedError)
