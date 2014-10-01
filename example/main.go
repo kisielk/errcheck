@@ -57,6 +57,20 @@ func main() {
 
 	_ = z + w // Avoid complaints about unused variables
 
+	// Type assertions
+	var i interface{}
+	s1 := i.(string)    // UNCHECKED
+	s1 = i.(string)     // UNCHECKED
+	s2, _ := i.(string) // BLANK
+	s2, _ = i.(string)  // BLANK
+	s3, ok := i.(string)
+	s3, ok = i.(string)
+	switch s4 := i.(type) {
+	case string:
+		_ = s4
+	}
+	_, _, _, _ = s1, s2, s3, ok
+
 	// Goroutine
 	go a()    // UNCHECKED
 	defer a() // UNCHECKED
