@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/types"
@@ -52,20 +53,43 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+	var errsMutex sync.Mutex
+	var errs []error
+
+	var wg sync.WaitGroup
+
 	for _, p := range pkgPaths {
 		if p == "unsafe" { // not a real package
 			continue
 		}
-		visitor.pkg = program.Imported[p]
-		for _, astFile := range visitor.pkg.Files {
-			ast.Walk(visitor, astFile)
-		}
+
+		wg.Add(1)
+
+		go func(pkgPath string) {
+			defer wg.Done()
+
+			visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+
+			visitor.pkg = program.Imported[pkgPath]
+			for _, astFile := range visitor.pkg.Files {
+				ast.Walk(visitor, astFile)
+			}
+
+			if len(visitor.errors) > 0 {
+				errsMutex.Lock()
+				defer errsMutex.Unlock()
+
+				errs = append(errs, visitor.errors...)
+			}
+		}(p)
 	}
 
-	if len(visitor.errors) > 0 {
-		return UncheckedErrors{visitor.errors}
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return UncheckedErrors{errs}
 	}
+
 	return nil
 }
 

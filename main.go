@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/kisielk/errcheck/lib"
@@ -62,6 +63,8 @@ func (f ignoreFlag) Set(s string) error {
 var dotStar = regexp.MustCompile(".*")
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	ignore := ignoreFlag(map[string]*regexp.Regexp{
 		"fmt": dotStar,
 	})
