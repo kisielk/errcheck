@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -33,6 +34,33 @@ type UncheckedErrors struct {
 
 func (e UncheckedErrors) Error() string {
 	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
+}
+
+// Len is the number of elements in the collection.
+func (e UncheckedErrors) Len() int { return len(e.Errors) }
+
+// Swap swaps the elements with indexes i and j.
+func (e UncheckedErrors) Swap(i, j int) { e.Errors[i], e.Errors[j] = e.Errors[j], e.Errors[i] }
+
+type byName struct{ UncheckedErrors }
+
+// Less reports whether the element with index i should sort before the element with index j.
+func (e byName) Less(i, j int) bool {
+	ei, ej := e.Errors[i].(uncheckedError), e.Errors[j].(uncheckedError)
+
+	pi, pj := ei.pos, ej.pos
+
+	if pi.Filename != pj.Filename {
+		return pi.Filename < pj.Filename
+	}
+	if pi.Line != pj.Line {
+		return pi.Line < pj.Line
+	}
+	if pi.Column != pj.Column {
+		return pi.Column < pj.Column
+	}
+
+	return ei.line < ej.line
 }
 
 // CheckPackages checks packages for errors.
@@ -87,7 +115,11 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return UncheckedErrors{errs}
+		u := UncheckedErrors{errs}
+
+		sort.Sort(byName{u})
+
+		return u
 	}
 
 	return nil
