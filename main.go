@@ -17,7 +17,7 @@ func Err(s string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "error: "+s+"\n", args...)
 }
 
-// Fatal calls Err followed by os.Exit(2)
+// Fatalf calls Err followed by os.Exit(2)
 func Fatalf(s string, args ...interface{}) {
 	Err(s, args...)
 	os.Exit(2)
