@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kisielk/errcheck/lib"
+	"github.com/kisielk/errcheck/internal"
 	"github.com/kisielk/gotool"
 )
 
