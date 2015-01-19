@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const testPackage = "github.com/kisielk/errcheck/example"
+const testPackage = "github.com/kisielk/errcheck/testdata"
 
 var (
 	unchecked map[marker]bool
@@ -50,7 +50,7 @@ func init() {
 
 // TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
 func TestUnchecked(t *testing.T) {
-	err := CheckPackages([]string{"github.com/kisielk/errcheck/example"}, make(map[string]*regexp.Regexp), false, true)
+	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), false, true)
 	uerr, ok := err.(UncheckedErrors)
 	if !ok {
 		t.Fatal("wrong error type returned")
@@ -80,7 +80,7 @@ func TestUnchecked(t *testing.T) {
 
 // TestBlank is like TestUnchecked but also ensures assignments to the blank identifier are caught.
 func TestBlank(t *testing.T) {
-	err := CheckPackages([]string{"github.com/kisielk/errcheck/example"}, make(map[string]*regexp.Regexp), true, true)
+	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), true, true)
 	uerr, ok := err.(UncheckedErrors)
 	if !ok {
 		t.Fatal("wrong error type returned")
