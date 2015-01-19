@@ -11,17 +11,6 @@ import (
 	"github.com/kisielk/gotool"
 )
 
-// Err prints an error to Stderr
-func Err(s string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "error: "+s+"\n", args...)
-}
-
-// Fatal calls Err followed by os.Exit(2)
-func Fatalf(s string, args ...interface{}) {
-	Err(s, args...)
-	os.Exit(2)
-}
-
 type ignoreFlag map[string]*regexp.Regexp
 
 func (f ignoreFlag) String() string {
@@ -89,7 +78,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(0)
 		}
-		Fatalf("failed to check package: %s", err)
+		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
+		os.Exit(2)
 	}
 	os.Exit(0)
 }
