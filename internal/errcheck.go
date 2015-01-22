@@ -11,7 +11,9 @@ import (
 	"go/token"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/types"
@@ -34,6 +36,33 @@ func (e UncheckedErrors) Error() string {
 	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
 }
 
+// Len is the number of elements in the collection.
+func (e UncheckedErrors) Len() int { return len(e.Errors) }
+
+// Swap swaps the elements with indexes i and j.
+func (e UncheckedErrors) Swap(i, j int) { e.Errors[i], e.Errors[j] = e.Errors[j], e.Errors[i] }
+
+type byName struct{ UncheckedErrors }
+
+// Less reports whether the element with index i should sort before the element with index j.
+func (e byName) Less(i, j int) bool {
+	ei, ej := e.Errors[i].(uncheckedError), e.Errors[j].(uncheckedError)
+
+	pi, pj := ei.pos, ej.pos
+
+	if pi.Filename != pj.Filename {
+		return pi.Filename < pj.Filename
+	}
+	if pi.Line != pj.Line {
+		return pi.Line < pj.Line
+	}
+	if pi.Column != pj.Column {
+		return pi.Column < pj.Column
+	}
+
+	return ei.line < ej.line
+}
+
 // CheckPackages checks packages for errors.
 // ignore is a map of package names to regular expressions. Identifiers from a package are
 // checked against its regular expressions and if any of the expressions match the call
@@ -52,20 +81,47 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+	var errsMutex sync.Mutex
+	var errs []error
+
+	var wg sync.WaitGroup
+
 	for _, p := range pkgPaths {
 		if p == "unsafe" { // not a real package
 			continue
 		}
-		visitor.pkg = program.Imported[p]
-		for _, astFile := range visitor.pkg.Files {
-			ast.Walk(visitor, astFile)
-		}
+
+		wg.Add(1)
+
+		go func(pkgPath string) {
+			defer wg.Done()
+
+			visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+
+			visitor.pkg = program.Imported[pkgPath]
+			for _, astFile := range visitor.pkg.Files {
+				ast.Walk(visitor, astFile)
+			}
+
+			if len(visitor.errors) > 0 {
+				errsMutex.Lock()
+				defer errsMutex.Unlock()
+
+				errs = append(errs, visitor.errors...)
+			}
+		}(p)
 	}
 
-	if len(visitor.errors) > 0 {
-		return UncheckedErrors{visitor.errors}
+	wg.Wait()
+
+	if len(errs) > 0 {
+		u := UncheckedErrors{errs}
+
+		sort.Sort(byName{u})
+
+		return u
 	}
+
 	return nil
 }
 
