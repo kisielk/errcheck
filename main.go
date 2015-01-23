@@ -12,6 +12,12 @@ import (
 	"github.com/kisielk/gotool"
 )
 
+const (
+	exitCodeOk int = iota
+	exitUncheckedError
+	exitFatalError
+)
+
 type ignoreFlag map[string]*regexp.Regexp
 
 func (f ignoreFlag) String() string {
@@ -51,18 +57,23 @@ func (f ignoreFlag) Set(s string) error {
 
 var dotStar = regexp.MustCompile(".*")
 
-func main() {
+func mainCmd(args []string) int {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
 	ignore := ignoreFlag(map[string]*regexp.Regexp{
 		"fmt": dotStar,
 	})
-	flag.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
+	flags.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
-	ignorePkg := flag.String("ignorepkg", "", "comma-separated list of package paths to ignore")
-	blank := flag.Bool("blank", false, "if true, check for errors assigned to blank identifier")
-	asserts := flag.Bool("asserts", false, "if true, check for ignored type assertion results")
-	flag.Parse()
+	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
+	blank := flags.Bool("blank", false, "if true, check for errors assigned to blank identifier")
+	asserts := flags.Bool("asserts", false, "if true, check for ignored type assertion results")
+
+	if err := flags.Parse(args[1:]); err != nil {
+		return exitFatalError
+	}
 
 	for _, pkg := range strings.Split(*ignorePkg, ",") {
 		if pkg != "" {
@@ -70,19 +81,23 @@ func main() {
 		}
 	}
 
-	var pkgPaths = gotool.ImportPaths(flag.Args())
+	var pkgPaths = gotool.ImportPaths(flags.Args())
 	if err := errcheck.CheckPackages(pkgPaths, ignore, *blank, *asserts); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
 				fmt.Println(uncheckedError)
 			}
-			os.Exit(1)
+			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(0)
+			return exitCodeOk
 		}
 		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
-		os.Exit(2)
+		return exitFatalError
 	}
-	os.Exit(0)
+	return exitCodeOk
+}
+
+func main() {
+	os.Exit(mainCmd(os.Args))
 }
