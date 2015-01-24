@@ -91,25 +91,25 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 			continue
 		}
 
-		wg.Add(1)
+		pkg := program.Imported[p]
 
-		go func(pkgPath string) {
-			defer wg.Done()
+		for _, astFile := range pkg.Files {
+			wg.Add(1)
 
-			visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+			go func(pkg *loader.PackageInfo, file *ast.File) {
+				defer wg.Done()
 
-			visitor.pkg = program.Imported[pkgPath]
-			for _, astFile := range visitor.pkg.Files {
-				ast.Walk(visitor, astFile)
-			}
+				visitor := &checker{program, pkg, ignore, blank, types, nil, []error{}}
+				ast.Walk(visitor, file)
 
-			if len(visitor.errors) > 0 {
-				errsMutex.Lock()
-				defer errsMutex.Unlock()
+				if len(visitor.errors) > 0 {
+					errsMutex.Lock()
+					defer errsMutex.Unlock()
 
-				errs = append(errs, visitor.errors...)
-			}
-		}(p)
+					errs = append(errs, visitor.errors...)
+				}
+			}(pkg, astFile)
+		}
 	}
 
 	wg.Wait()
@@ -132,7 +132,7 @@ type checker struct {
 	ignore map[string]*regexp.Regexp
 	blank  bool
 	types  bool
-	lines  map[string][]string
+	lines  []string
 
 	errors []error
 }
@@ -230,15 +230,14 @@ func (c *checker) isRecover(call *ast.CallExpr) bool {
 
 func (c *checker) addErrorAtPosition(position token.Pos) {
 	pos := c.prog.Fset.Position(position)
-	lines, ok := c.lines[pos.Filename]
-	if !ok {
-		lines = readfile(pos.Filename)
-		c.lines[pos.Filename] = lines
+
+	if c.lines == nil {
+		c.lines = readfile(pos.Filename)
 	}
 
 	line := "??"
-	if pos.Line-1 < len(lines) {
-		line = strings.TrimSpace(lines[pos.Line-1])
+	if pos.Line-1 < len(c.lines) {
+		line = strings.TrimSpace(c.lines[pos.Line-1])
 	}
 	c.errors = append(c.errors, uncheckedError{pos, line})
 }
