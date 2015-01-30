@@ -16,7 +16,7 @@ errcheck requires Go 1.4 and depends on the go/types package from the golang.org
 For basic usage, just give the package path of interest as the first
 argument:
 
-    errcheck github.com/kisielk/errcheck/example
+    errcheck github.com/kisielk/errcheck/testdata
 
 There are currently three flags: `-ignore`, `-ignorepkg` and `-blank`
 
