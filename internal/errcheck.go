@@ -71,7 +71,7 @@ func (e byName) Less(i, j int) bool {
 // ignored errors.
 // If types is true then ignored type assertion results are also checked
 func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bool, types bool) error {
-	loadcfg := loader.Config{SourceImports: true}
+	loadcfg := loader.Config{ImportFromBinary: false}
 	for _, p := range pkgPaths {
 		loadcfg.Import(p)
 	}
