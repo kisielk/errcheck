@@ -81,8 +81,9 @@ func mainCmd(args []string) int {
 		}
 	}
 
-	var pkgPaths = gotool.ImportPaths(flags.Args())
-	if err := errcheck.CheckPackages(pkgPaths, ignore, *blank, *asserts); err != nil {
+	// ImportPaths normalizes paths and expands '...'
+	var expandedArgs = gotool.ImportPaths(flags.Args())
+	if err := errcheck.CheckPackages(expandedArgs, ignore, *blank, *asserts); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
 				fmt.Println(uncheckedError)
