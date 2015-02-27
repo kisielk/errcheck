@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/token"
 	"os"
 	"regexp"
@@ -63,6 +64,21 @@ func (e byName) Less(i, j int) bool {
 	return ei.line < ej.line
 }
 
+// findPackage is similar to the default implementation (loader.defaultFindPackage),
+// but allows local imports like "./foo" to resolve relative to the current directory.
+func findPackage(ctxt *build.Context, path string) (*build.Package, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	bp, err := ctxt.Import(path, wd, 0)
+	if _, ok := err.(*build.NoGoError); ok {
+		return bp, nil // empty directory is not an error
+	}
+	return bp, err
+}
+
 // CheckPackages checks packages for errors.
 // ignore is a map of package names to regular expressions. Identifiers from a package are
 // checked against its regular expressions and if any of the expressions match the call
@@ -70,10 +86,17 @@ func (e byName) Less(i, j int) bool {
 // If blank is true then assignments to the blank identifier are also considered to be
 // ignored errors.
 // If types is true then ignored type assertion results are also checked
-func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bool, types bool) error {
-	loadcfg := loader.Config{ImportFromBinary: false}
-	for _, p := range pkgPaths {
-		loadcfg.Import(p)
+func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, types bool) error {
+	loadcfg := loader.Config{
+		ImportFromBinary: false,
+		FindPackage:      findPackage,
+	}
+	rest, err := loadcfg.FromArgs(args, true)
+	if err != nil {
+		return fmt.Errorf("could not parse arguments: %s", err)
+	}
+	if len(rest) > 0 {
+		return fmt.Errorf("unhandled extra arguments: %v", rest)
 	}
 
 	program, err := loadcfg.Load()
@@ -86,19 +109,18 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 
 	var wg sync.WaitGroup
 
-	for _, p := range pkgPaths {
-		if p == "unsafe" { // not a real package
+	for _, pkgInfo := range program.InitialPackages() {
+		if pkgInfo.Pkg.Path() == "unsafe" { // not a real package
 			continue
 		}
 
 		wg.Add(1)
 
-		go func(pkgPath string) {
+		go func(pkgInfo *loader.PackageInfo) {
 			defer wg.Done()
 
-			visitor := &checker{program, nil, ignore, blank, types, make(map[string][]string), []error{}}
+			visitor := &checker{program, pkgInfo, ignore, blank, types, make(map[string][]string), []error{}}
 
-			visitor.pkg = program.Imported[pkgPath]
 			for _, astFile := range visitor.pkg.Files {
 				ast.Walk(visitor, astFile)
 			}
@@ -109,7 +131,7 @@ func CheckPackages(pkgPaths []string, ignore map[string]*regexp.Regexp, blank bo
 
 				errs = append(errs, visitor.errors...)
 			}
-		}(p)
+		}(pkgInfo)
 	}
 
 	wg.Wait()
