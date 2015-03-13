@@ -61,15 +61,16 @@ func mainCmd(args []string) int {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-
+	var (
+		ignorePkg = flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
+		blank     = flags.Bool("blank", false, "if true, check for errors assigned to blank identifier")
+		asserts   = flags.Bool("asserts", false, "if true, check for ignored type assertion results")
+	)
 	ignore := ignoreFlag(map[string]*regexp.Regexp{
 		"fmt": dotStar,
 	})
 	flags.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
-	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
-	blank := flags.Bool("blank", false, "if true, check for errors assigned to blank identifier")
-	asserts := flags.Bool("asserts", false, "if true, check for ignored type assertion results")
 
 	if err := flags.Parse(args[1:]); err != nil {
 		return exitFatalError
