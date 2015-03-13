@@ -69,8 +69,8 @@ func (e byName) Less(i, j int) bool {
 // is not checked.
 // If blank is true then assignments to the blank identifier are also considered to be
 // ignored errors.
-// If types is true then ignored type assertion results are also checked
-func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, types bool) error {
+// If asserts is true then ignored type assertion results are also checked
+func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, asserts bool) error {
 	loadcfg := loader.Config{
 		ImportFromBinary: false,
 	}
@@ -102,7 +102,7 @@ func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, 
 		go func(pkgInfo *loader.PackageInfo) {
 			defer wg.Done()
 
-			visitor := &checker{program, pkgInfo, ignore, blank, types, make(map[string][]string), []error{}}
+			visitor := &checker{program, pkgInfo, ignore, blank, asserts, make(map[string][]string), []error{}}
 
 			for _, astFile := range visitor.pkg.Files {
 				ast.Walk(visitor, astFile)
@@ -132,12 +132,12 @@ func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, 
 
 // checker implements the errcheck algorithm
 type checker struct {
-	prog   *loader.Program
-	pkg    *loader.PackageInfo
-	ignore map[string]*regexp.Regexp
-	blank  bool
-	types  bool
-	lines  map[string][]string
+	prog    *loader.Program
+	pkg     *loader.PackageInfo
+	ignore  map[string]*regexp.Regexp
+	blank   bool
+	asserts bool
+	lines   map[string][]string
 
 	errors []error
 }
@@ -299,7 +299,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 					}
 				}
 			} else if assert, ok := stmt.Rhs[0].(*ast.TypeAssertExpr); ok {
-				if !c.types {
+				if !c.asserts {
 					break
 				}
 				if assert.Type == nil {
@@ -330,7 +330,7 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 							c.addErrorAtPosition(id.NamePos)
 						}
 					} else if assert, ok := stmt.Rhs[i].(*ast.TypeAssertExpr); ok {
-						if !c.types {
+						if !c.asserts {
 							continue
 						}
 						if assert.Type == nil {
