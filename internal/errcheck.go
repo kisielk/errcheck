@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/token"
 	"os"
 	"regexp"
@@ -64,21 +63,6 @@ func (e byName) Less(i, j int) bool {
 	return ei.line < ej.line
 }
 
-// findPackage is similar to the default implementation (loader.defaultFindPackage),
-// but allows local imports like "./foo" to resolve relative to the current directory.
-func findPackage(ctxt *build.Context, path string) (*build.Package, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	bp, err := ctxt.Import(path, wd, 0)
-	if _, ok := err.(*build.NoGoError); ok {
-		return bp, nil // empty directory is not an error
-	}
-	return bp, err
-}
-
 // CheckPackages checks packages for errors.
 // ignore is a map of package names to regular expressions. Identifiers from a package are
 // checked against its regular expressions and if any of the expressions match the call
@@ -89,7 +73,6 @@ func findPackage(ctxt *build.Context, path string) (*build.Package, error) {
 func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, types bool) error {
 	loadcfg := loader.Config{
 		ImportFromBinary: false,
-		FindPackage:      findPackage,
 	}
 	rest, err := loadcfg.FromArgs(args, true)
 	if err != nil {
