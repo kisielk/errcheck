@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/token"
 	"os"
 	"regexp"
@@ -67,12 +68,20 @@ func (e byName) Less(i, j int) bool {
 // ignore is a map of package names to regular expressions. Identifiers from a package are
 // checked against its regular expressions and if any of the expressions match the call
 // is not checked.
+// tags is a slice of build tags (as string) to include. This list can be empty.
 // If blank is true then assignments to the blank identifier are also considered to be
 // ignored errors.
 // If asserts is true then ignored type assertion results are also checked
-func CheckPackages(args []string, ignore map[string]*regexp.Regexp, blank bool, asserts bool) error {
+func CheckPackages(args []string, ignore map[string]*regexp.Regexp, tags []string, blank bool, asserts bool) error {
+	ctx := build.Default
+	if len(tags) > 0 {
+		for _, tag := range tags {
+			ctx.BuildTags = append(ctx.BuildTags, tag)
+		}
+	}
 	loadcfg := loader.Config{
 		ImportFromBinary: false,
+		Build:            &ctx,
 	}
 	rest, err := loadcfg.FromArgs(args, true)
 	if err != nil {
