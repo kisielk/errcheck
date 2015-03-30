@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(t *testing.T) {
@@ -54,5 +56,137 @@ func TestMain(t *testing.T) {
 	expectUnchecked := 9
 	if got := strings.Count(out, "UNCHECKED"); got != expectUnchecked {
 		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
+	}
+}
+
+type parseTestCase struct {
+	args    []string
+	paths   []string
+	ignore  map[string]string
+	tags    []string
+	blank   bool
+	asserts bool
+	error   int
+}
+
+func TestParseFlags(t *testing.T) {
+	cases := []parseTestCase{
+		parseTestCase{
+			args:    []string{"errcheck"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-blank", "-asserts"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{},
+			blank:   true,
+			asserts: true,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "foo", "bar"},
+			paths:   []string{"foo", "bar"},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String(), "encoding/binary": dotStar.String()},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignore", "fmt:[FS]?[Pp]rint*"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": "[FS]?[Pp]rint*"},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String(), "": "[rR]ead|[wW]rite"},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignorepkg", "testing"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String(), "testing": dotStar.String()},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String(), "testing": dotStar.String(), "foo": dotStar.String()},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-tags", "foo"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{"foo"},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-tags", "foo bar !baz"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{"foo", "bar", "!baz"},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": dotStar.String()},
+			tags:    []string{"foo", "bar", "!baz"},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+	}
+
+	assert := assert.New(t)
+	for _, c := range cases {
+		p, ign, t, b, a, e := parseFlags(c.args)
+
+		i := map[string]string{}
+		for k, v := range ign {
+			i[k] = v.String()
+		}
+
+		argsStr := strings.Join(c.args, " ")
+		assert.Equal(c.paths, p, "got expected paths from %q", argsStr)
+		assert.Equal(c.ignore, i, "got expected ignore regexes from %q", argsStr)
+		assert.Equal(c.tags, t, "got expected tags from %q", argsStr)
+		assert.Equal(c.blank, b, "got expected blank flag setting from %q", argsStr)
+		assert.Equal(c.asserts, a, "got expected asserts flag setting from %q", argsStr)
+		assert.Equal(c.error, e, "got expected error code when parsing %q", argsStr)
 	}
 }
