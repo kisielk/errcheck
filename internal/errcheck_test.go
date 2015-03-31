@@ -6,6 +6,8 @@ import (
 	"go/token"
 	"regexp"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const testPackage = "github.com/kisielk/errcheck/testdata"
@@ -52,13 +54,12 @@ func init() {
 func TestUnchecked(t *testing.T) {
 	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), make([]string, 0), false, true)
 	uerr, ok := err.(UncheckedErrors)
-	if !ok {
+	if !assert.True(t, ok, "error is an UncheckedErrors error") {
 		t.Fatal("wrong error type returned")
 	}
 
 	numErrors := len(unchecked)
-	if len(uerr.Errors) != numErrors {
-		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
+	if !assert.Equal(t, len(uerr.Errors), numErrors, "got %d errors", len(uerr.Errors)) {
 		for i, err := range uerr.Errors {
 			t.Errorf("%d: %v", i, err)
 		}
@@ -67,14 +68,12 @@ func TestUnchecked(t *testing.T) {
 
 	for i, err := range uerr.Errors {
 		uerr, ok := err.(uncheckedError)
-		if !ok {
+		if !assert.True(t, ok, "error %d is an UncheckedError error", i) {
 			t.Errorf("%d: not an uncheckedError, got %v", i, err)
 			continue
 		}
 		m := marker{uerr.pos.Filename, uerr.pos.Line}
-		if !unchecked[m] {
-			t.Errorf("%d: unexpected error: %v", i, uerr)
-		}
+		assert.True(t, unchecked[m], "expected error at %v", m)
 	}
 }
 
@@ -82,13 +81,12 @@ func TestUnchecked(t *testing.T) {
 func TestBlank(t *testing.T) {
 	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), make([]string, 0), true, true)
 	uerr, ok := err.(UncheckedErrors)
-	if !ok {
+	if !assert.True(t, ok, "error is an UncheckedErrors error") {
 		t.Fatal("wrong error type returned")
 	}
 
 	numErrors := len(unchecked) + len(blank)
-	if len(uerr.Errors) != numErrors {
-		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
+	if !assert.Equal(t, len(uerr.Errors), numErrors, "got %d errors", len(uerr.Errors)) {
 		for i, err := range uerr.Errors {
 			t.Errorf("%d: %v", i, err)
 		}
@@ -97,13 +95,11 @@ func TestBlank(t *testing.T) {
 
 	for i, err := range uerr.Errors {
 		uerr, ok := err.(uncheckedError)
-		if !ok {
+		if !assert.True(t, ok, "error %d is an UncheckedError error", i) {
 			t.Errorf("%d: not an uncheckedError, got %v", i, err)
 			continue
 		}
 		m := marker{uerr.pos.Filename, uerr.pos.Line}
-		if !unchecked[m] && !blank[m] {
-			t.Errorf("%d: unexpected error: %v", i, uerr)
-		}
+		assert.True(t, unchecked[m] || blank[m], "expected error at %v", m)
 	}
 }

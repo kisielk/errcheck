@@ -49,14 +49,13 @@ func TestMain(t *testing.T) {
 
 	out := <-bufChannel
 
-	if exitCode != exitUncheckedError {
-		t.Errorf("Exit code is %d, expected %d", exitCode, exitUncheckedError)
-	}
+	assert.Equal(t, exitCode, exitUncheckedError,
+		"Exit code is %d, expected %d", exitCode, exitUncheckedError)
 
 	expectUnchecked := 9
-	if got := strings.Count(out, "UNCHECKED"); got != expectUnchecked {
-		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
-	}
+	got := strings.Count(out, "UNCHECKED")
+	assert.Equal(t, expectUnchecked, got,
+		"Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
 }
 
 type parseTestCase struct {
