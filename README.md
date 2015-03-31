@@ -18,7 +18,7 @@ argument:
 
     errcheck github.com/kisielk/errcheck/testdata
 
-There are currently three flags: `-ignore`, `-ignorepkg` and `-blank`
+There are currently five flags: `-ignore`, `-ignorepkg`, `-tags`, `-asserts`, and `-blank`
 
 The `-ignore` flag takes a comma-separated list of pairs of the form package:regex.
 For each package, the regex describes which functions to ignore within that package.
@@ -49,6 +49,13 @@ Note that by default the `fmt` package is ignored entirely, unless a regex is
 specified for it. To disable this, specify a regex that matches nothing:
 
     errcheck -ignore 'fmt:a^' path/to/package
+
+The `-tags` flag takes a space-separated list of build tags, just like `go
+build`. If you are using any custom build tags in your code base, you may need
+to specify the relevant tags here.
+
+The `-asserts` flag enabled checking for ignored type assertion results. It
+takes no arguments.
 
 The `-blank` flag enables checking for assignments of errors to the
 blank identifier. It takes no arguments.
