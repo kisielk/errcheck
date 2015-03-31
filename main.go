@@ -116,7 +116,7 @@ func parseFlags(args []string) ([]string, map[string]*regexp.Regexp, []string, b
 	flags.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
 	tags := tagsFlag([]string{})
-	flags.Var(&tags, "tags", "comma-separated list of build tags to include")
+	flags.Var(&tags, "tags", "space-separated list of build tags to include")
 
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, nil, nil, false, false, exitFatalError
