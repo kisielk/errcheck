@@ -119,17 +119,24 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		go func(pkgInfo *loader.PackageInfo) {
 			defer wg.Done()
 
-			visitor := &checker{program, pkgInfo, c.Ignore, c.Blank, c.Asserts, make(map[string][]string), []error{}}
-
-			for _, astFile := range visitor.pkg.Files {
-				ast.Walk(visitor, astFile)
+			v := &visitor{
+				prog:    program,
+				pkg:     pkgInfo,
+				ignore:  c.Ignore,
+				blank:   c.Blank,
+				asserts: c.Asserts,
+				lines:   make(map[string][]string),
+				errors:  []error{},
 			}
 
-			if len(visitor.errors) > 0 {
+			for _, astFile := range v.pkg.Files {
+				ast.Walk(v, astFile)
+			}
+			if len(v.errors) > 0 {
 				errsMutex.Lock()
 				defer errsMutex.Unlock()
 
-				errs = append(errs, visitor.errors...)
+				errs = append(errs, v.errors...)
 			}
 		}(pkgInfo)
 	}
@@ -147,8 +154,8 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	return nil
 }
 
-// checker implements the errcheck algorithm
-type checker struct {
+// visitor implements the errcheck algorithm
+type visitor struct {
 	prog    *loader.Program
 	pkg     *loader.PackageInfo
 	ignore  map[string]*regexp.Regexp
@@ -172,7 +179,7 @@ func (e uncheckedError) Error() string {
 	return fmt.Sprintf("%s\t%s", pos, e.line)
 }
 
-func (c *checker) ignoreCall(call *ast.CallExpr) bool {
+func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -192,14 +199,13 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 	}
 
 	// If we got an identifier for the function, see if it is ignored
-
-	if re, ok := c.ignore[""]; ok && re.MatchString(id.Name) {
+	if re, ok := v.ignore[""]; ok && re.MatchString(id.Name) {
 		return true
 	}
 
-	if obj := c.pkg.Uses[id]; obj != nil {
+	if obj := v.pkg.Uses[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
-			if re, ok := c.ignore[pkg.Path()]; ok {
+			if re, ok := v.ignore[pkg.Path()]; ok {
 				return re.MatchString(id.Name)
 			}
 		}
@@ -211,8 +217,8 @@ func (c *checker) ignoreCall(call *ast.CallExpr) bool {
 // errorsByArg returns a slice s such that
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
-func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.pkg.Types[call].Type.(type) {
+func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
+	switch t := v.pkg.Types[call].Type.(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t.Obj())}
@@ -228,11 +234,11 @@ func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 	return []bool{false}
 }
 
-func (c *checker) callReturnsError(call *ast.CallExpr) bool {
-	if c.isRecover(call) {
+func (v *visitor) callReturnsError(call *ast.CallExpr) bool {
+	if v.isRecover(call) {
 		return true
 	}
-	for _, isError := range c.errorsByArg(call) {
+	for _, isError := range v.errorsByArg(call) {
 		if isError {
 			return true
 		}
@@ -241,28 +247,28 @@ func (c *checker) callReturnsError(call *ast.CallExpr) bool {
 }
 
 // isRecover returns true if the given CallExpr is a call to the built-in recover() function.
-func (c *checker) isRecover(call *ast.CallExpr) bool {
+func (v *visitor) isRecover(call *ast.CallExpr) bool {
 	if fun, ok := call.Fun.(*ast.Ident); ok {
-		if _, ok := c.pkg.Uses[fun].(*types.Builtin); ok {
+		if _, ok := v.pkg.Uses[fun].(*types.Builtin); ok {
 			return fun.Name == "recover"
 		}
 	}
 	return false
 }
 
-func (c *checker) addErrorAtPosition(position token.Pos) {
-	pos := c.prog.Fset.Position(position)
-	lines, ok := c.lines[pos.Filename]
+func (v *visitor) addErrorAtPosition(position token.Pos) {
+	pos := v.prog.Fset.Position(position)
+	lines, ok := v.lines[pos.Filename]
 	if !ok {
 		lines = readfile(pos.Filename)
-		c.lines[pos.Filename] = lines
+		v.lines[pos.Filename] = lines
 	}
 
 	line := "??"
 	if pos.Line-1 < len(lines) {
 		line = strings.TrimSpace(lines[pos.Line-1])
 	}
-	c.errors = append(c.errors, uncheckedError{pos, line})
+	v.errors = append(v.errors, uncheckedError{pos, line})
 }
 
 func readfile(filename string) []string {
@@ -279,44 +285,44 @@ func readfile(filename string) []string {
 	return lines
 }
 
-func (c *checker) Visit(node ast.Node) ast.Visitor {
+func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
 		if call, ok := stmt.X.(*ast.CallExpr); ok {
-			if !c.ignoreCall(call) && c.callReturnsError(call) {
-				c.addErrorAtPosition(call.Lparen)
+			if !v.ignoreCall(call) && v.callReturnsError(call) {
+				v.addErrorAtPosition(call.Lparen)
 			}
 		}
 	case *ast.GoStmt:
-		if !c.ignoreCall(stmt.Call) && c.callReturnsError(stmt.Call) {
-			c.addErrorAtPosition(stmt.Call.Lparen)
+		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.DeferStmt:
-		if !c.ignoreCall(stmt.Call) && c.callReturnsError(stmt.Call) {
-			c.addErrorAtPosition(stmt.Call.Lparen)
+		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.AssignStmt:
 		if len(stmt.Rhs) == 1 {
 			// single value on rhs; check against lhs identifiers
 			if call, ok := stmt.Rhs[0].(*ast.CallExpr); ok {
-				if !c.blank {
+				if !v.blank {
 					break
 				}
-				if c.ignoreCall(call) {
+				if v.ignoreCall(call) {
 					break
 				}
-				isError := c.errorsByArg(call)
+				isError := v.errorsByArg(call)
 				for i := 0; i < len(stmt.Lhs); i++ {
 					if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
 						// We shortcut calls to recover() because errorsByArg can't
 						// check its return types for errors since it returns interface{}.
-						if id.Name == "_" && (c.isRecover(call) || isError[i]) {
-							c.addErrorAtPosition(id.NamePos)
+						if id.Name == "_" && (v.isRecover(call) || isError[i]) {
+							v.addErrorAtPosition(id.NamePos)
 						}
 					}
 				}
 			} else if assert, ok := stmt.Rhs[0].(*ast.TypeAssertExpr); ok {
-				if !c.asserts {
+				if !v.asserts {
 					break
 				}
 				if assert.Type == nil {
@@ -325,10 +331,10 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 				}
 				if len(stmt.Lhs) < 2 {
 					// assertion result not read
-					c.addErrorAtPosition(stmt.Rhs[0].Pos())
-				} else if id, ok := stmt.Lhs[1].(*ast.Ident); ok && c.blank && id.Name == "_" {
+					v.addErrorAtPosition(stmt.Rhs[0].Pos())
+				} else if id, ok := stmt.Lhs[1].(*ast.Ident); ok && v.blank && id.Name == "_" {
 					// assertion result ignored
-					c.addErrorAtPosition(id.NamePos)
+					v.addErrorAtPosition(id.NamePos)
 				}
 			}
 		} else {
@@ -337,31 +343,31 @@ func (c *checker) Visit(node ast.Node) ast.Visitor {
 			for i := 0; i < len(stmt.Lhs); i++ {
 				if id, ok := stmt.Lhs[i].(*ast.Ident); ok {
 					if call, ok := stmt.Rhs[i].(*ast.CallExpr); ok {
-						if !c.blank {
+						if !v.blank {
 							continue
 						}
-						if c.ignoreCall(call) {
+						if v.ignoreCall(call) {
 							continue
 						}
-						if id.Name == "_" && c.callReturnsError(call) {
-							c.addErrorAtPosition(id.NamePos)
+						if id.Name == "_" && v.callReturnsError(call) {
+							v.addErrorAtPosition(id.NamePos)
 						}
 					} else if assert, ok := stmt.Rhs[i].(*ast.TypeAssertExpr); ok {
-						if !c.asserts {
+						if !v.asserts {
 							continue
 						}
 						if assert.Type == nil {
 							// Shouldn't happen anyway, no multi assignment in type switches
 							continue
 						}
-						c.addErrorAtPosition(id.NamePos)
+						v.addErrorAtPosition(id.NamePos)
 					}
 				}
 			}
 		}
 	default:
 	}
-	return c
+	return v
 }
 
 type obj interface {
