@@ -4,7 +4,6 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"regexp"
 	"testing"
 )
 
@@ -50,7 +49,10 @@ func init() {
 
 // TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
 func TestUnchecked(t *testing.T) {
-	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), make([]string, 0), false, true)
+	checker := &Checker{
+		Asserts: true,
+	}
+	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(UncheckedErrors)
 	if !ok {
 		t.Fatal("wrong error type returned")
@@ -80,7 +82,11 @@ func TestUnchecked(t *testing.T) {
 
 // TestBlank is like TestUnchecked but also ensures assignments to the blank identifier are caught.
 func TestBlank(t *testing.T) {
-	err := CheckPackages([]string{testPackage}, make(map[string]*regexp.Regexp), make([]string, 0), true, true)
+	checker := &Checker{
+		Asserts: true,
+		Blank:   true,
+	}
+	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(UncheckedErrors)
 	if !ok {
 		t.Fatal("wrong error type returned")

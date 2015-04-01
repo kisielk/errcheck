@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/kisielk/errcheck/internal"
 )
 
 func TestMain(t *testing.T) {
@@ -196,27 +198,23 @@ func TestParseFlags(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		p, ign, tags, b, a, e := parseFlags(c.args)
-
-		i := map[string]string{}
-		for k, v := range ign {
-			i[k] = v.String()
-		}
+		checker := &errcheck.Checker{}
+		p, e := parseFlags(checker, c.args)
 
 		argsStr := strings.Join(c.args, " ")
 		if !slicesEqual(p, c.paths) {
 			t.Fatalf("%q: path got %q want %q", argsStr, p, c.paths)
 		}
-		if !ignoresEqual(ign, c.ignore) {
+		if ign := checker.Ignore; !ignoresEqual(ign, c.ignore) {
 			t.Fatalf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
 		}
-		if !slicesEqual(tags, c.tags) {
+		if tags := checker.Tags; !slicesEqual(tags, c.tags) {
 			t.Fatalf("%q: tags got %v want %v", argsStr, tags, c.tags)
 		}
-		if b != c.blank {
+		if b := checker.Blank; b != c.blank {
 			t.Fatalf("%q: blank got %q want %q", argsStr, b, c.blank)
 		}
-		if a != c.asserts {
+		if a := checker.Asserts; a != c.asserts {
 			t.Fatalf("%q: asserts got %q want %q", argsStr, a, c.asserts)
 		}
 		if e != c.error {

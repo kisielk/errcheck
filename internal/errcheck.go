@@ -64,26 +64,34 @@ func (e byName) Less(i, j int) bool {
 	return ei.line < ej.line
 }
 
+type Checker struct {
+	// ignore is a map of package names to regular expressions. Identifiers from a package are
+	// checked against its regular expressions and if any of the expressions match the call
+	// is not checked.
+	Ignore map[string]*regexp.Regexp
+
+	// If blank is true then assignments to the blank identifier are also considered to be
+	// ignored errors.
+	Blank bool
+
+	// If asserts is true then ignored type assertion results are also checked
+	Asserts bool
+
+	// build tags
+	Tags []string
+}
+
 // CheckPackages checks packages for errors.
-// ignore is a map of package names to regular expressions. Identifiers from a package are
-// checked against its regular expressions and if any of the expressions match the call
-// is not checked.
-// tags is a slice of build tags (as string) to include. This list can be empty.
-// If blank is true then assignments to the blank identifier are also considered to be
-// ignored errors.
-// If asserts is true then ignored type assertion results are also checked
-func CheckPackages(args []string, ignore map[string]*regexp.Regexp, tags []string, blank bool, asserts bool) error {
+func (c *Checker) CheckPackages(paths ...string) error {
 	ctx := build.Default
-	if len(tags) > 0 {
-		for _, tag := range tags {
-			ctx.BuildTags = append(ctx.BuildTags, tag)
-		}
+	for _, tag := range c.Tags {
+		ctx.BuildTags = append(ctx.BuildTags, tag)
 	}
 	loadcfg := loader.Config{
 		ImportFromBinary: false,
 		Build:            &ctx,
 	}
-	rest, err := loadcfg.FromArgs(args, true)
+	rest, err := loadcfg.FromArgs(paths, true)
 	if err != nil {
 		return fmt.Errorf("could not parse arguments: %s", err)
 	}
@@ -111,7 +119,7 @@ func CheckPackages(args []string, ignore map[string]*regexp.Regexp, tags []strin
 		go func(pkgInfo *loader.PackageInfo) {
 			defer wg.Done()
 
-			visitor := &checker{program, pkgInfo, ignore, blank, asserts, make(map[string][]string), []error{}}
+			visitor := &checker{program, pkgInfo, c.Ignore, c.Blank, c.Asserts, make(map[string][]string), []error{}}
 
 			for _, astFile := range visitor.pkg.Files {
 				ast.Walk(visitor, astFile)

@@ -82,12 +82,13 @@ var dotStar = regexp.MustCompile(".*")
 func mainCmd(args []string) int {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	paths, ignore, tags, blank, asserts, err := parseFlags(args)
+	checker := &errcheck.Checker{}
+	paths, err := parseFlags(checker, args)
 	if err != exitCodeOk {
 		return err
 	}
 
-	if err := errcheck.CheckPackages(paths, ignore, tags, blank, asserts); err != nil {
+	if err := checker.CheckPackages(paths...); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
 				fmt.Println(uncheckedError)
@@ -103,33 +104,34 @@ func mainCmd(args []string) int {
 	return exitCodeOk
 }
 
-func parseFlags(args []string) ([]string, map[string]*regexp.Regexp, []string, bool, bool, int) {
+func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	var (
-		ignorePkg = flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
-		blank     = flags.Bool("blank", false, "if true, check for errors assigned to blank identifier")
-		asserts   = flags.Bool("asserts", false, "if true, check for ignored type assertion results")
-	)
+	flags.BoolVar(&checker.Blank, "blank", false, "if true, check for errors assigned to blank identifier")
+	flags.BoolVar(&checker.Asserts, "asserts", false, "if true, check for ignored type assertion results")
+
+	tags := tagsFlag{}
+	flags.Var(&tags, "tags", "space-separated list of build tags to include")
+	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
 	ignore := ignoreFlag(map[string]*regexp.Regexp{
 		"fmt": dotStar,
 	})
 	flags.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
-	tags := tagsFlag([]string{})
-	flags.Var(&tags, "tags", "space-separated list of build tags to include")
 
 	if err := flags.Parse(args[1:]); err != nil {
-		return nil, nil, nil, false, false, exitFatalError
+		return nil, exitFatalError
 	}
 
+	checker.Tags = []string(tags)
 	for _, pkg := range strings.Split(*ignorePkg, ",") {
 		if pkg != "" {
 			ignore[pkg] = dotStar
 		}
 	}
+	checker.Ignore = ignore
 
 	// ImportPaths normalizes paths and expands '...'
-	return gotool.ImportPaths(flags.Args()), ignore, tags, *blank, *asserts, exitCodeOk
+	return gotool.ImportPaths(flags.Args()), exitCodeOk
 }
 
 func main() {
