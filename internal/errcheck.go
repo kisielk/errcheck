@@ -88,8 +88,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		ctx.BuildTags = append(ctx.BuildTags, tag)
 	}
 	loadcfg := loader.Config{
-		ImportFromBinary: false,
-		Build:            &ctx,
+		Build: &ctx,
 	}
 	rest, err := loadcfg.FromArgs(paths, true)
 	if err != nil {
