@@ -79,6 +79,14 @@ type Checker struct {
 
 	// build tags
 	Tags []string
+
+	Verbose bool
+}
+
+func (c *Checker) logf(msg string, args ...interface{}) {
+	if c.Verbose {
+		fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	}
 }
 
 // CheckPackages checks packages for errors.
@@ -118,6 +126,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 		go func(pkgInfo *loader.PackageInfo) {
 			defer wg.Done()
+			c.logf("Checking %s", pkgInfo.Pkg.Path())
 
 			v := &visitor{
 				prog:    program,
