@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go/build"
 	"os"
 	"regexp"
 	"runtime"
@@ -123,13 +124,18 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 		return nil, exitFatalError
 	}
 
-	checker.Tags = []string(tags)
+	checker.Tags = tags
 	for _, pkg := range strings.Split(*ignorePkg, ",") {
 		if pkg != "" {
 			ignore[pkg] = dotStar
 		}
 	}
 	checker.Ignore = ignore
+
+	ctx := gotool.Context{
+		BuildContext: build.Default,
+	}
+	ctx.BuildContext.BuildTags = tags
 
 	// ImportPaths normalizes paths and expands '...'
 	return gotool.ImportPaths(flags.Args()), exitCodeOk
