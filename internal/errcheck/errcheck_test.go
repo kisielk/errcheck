@@ -68,14 +68,9 @@ func TestUnchecked(t *testing.T) {
 	}
 
 	for i, err := range uerr.Errors {
-		uerr, ok := err.(uncheckedError)
-		if !ok {
-			t.Errorf("%d: not an uncheckedError, got %v", i, err)
-			continue
-		}
-		m := marker{uerr.pos.Filename, uerr.pos.Line}
+		m := marker{err.Pos.Filename, err.Pos.Line}
 		if !unchecked[m] {
-			t.Errorf("%d: unexpected error: %v", i, uerr)
+			t.Errorf("%d: unexpected error: %v", i, err)
 		}
 	}
 }
@@ -102,14 +97,9 @@ func TestBlank(t *testing.T) {
 	}
 
 	for i, err := range uerr.Errors {
-		uerr, ok := err.(uncheckedError)
-		if !ok {
-			t.Errorf("%d: not an uncheckedError, got %v", i, err)
-			continue
-		}
-		m := marker{uerr.pos.Filename, uerr.pos.Line}
+		m := marker{err.Pos.Filename, err.Pos.Line}
 		if !unchecked[m] && !blank[m] {
-			t.Errorf("%d: unexpected error: %v", i, uerr)
+			t.Errorf("%d: unexpected error: %v", i, err)
 		}
 	}
 }

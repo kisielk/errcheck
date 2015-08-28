@@ -19,6 +19,8 @@ const (
 	exitFatalError
 )
 
+var abspath bool
+
 type ignoreFlag map[string]*regexp.Regexp
 
 func (f ignoreFlag) String() string {
@@ -80,6 +82,18 @@ func (f *tagsFlag) Set(s string) error {
 
 var dotStar = regexp.MustCompile(".*")
 
+func reportUncheckedErrors(e errcheck.UncheckedErrors) {
+	for _, uncheckedError := range e.Errors {
+		pos := uncheckedError.Pos.String()
+		if !abspath {
+			if i := strings.Index(pos, "/src/"); i != -1 {
+				pos = pos[i+len("/src/"):]
+			}
+		}
+		fmt.Printf("%s\t%s\n", pos, uncheckedError.Line)
+	}
+}
+
 func mainCmd(args []string) int {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -91,9 +105,7 @@ func mainCmd(args []string) int {
 
 	if err := checker.CheckPackages(paths...); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
-			for _, uncheckedError := range e.Errors {
-				fmt.Println(uncheckedError)
-			}
+			reportUncheckedErrors(e)
 			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
@@ -110,6 +122,8 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.BoolVar(&checker.Blank, "blank", false, "if true, check for errors assigned to blank identifier")
 	flags.BoolVar(&checker.Asserts, "asserts", false, "if true, check for ignored type assertion results")
 	flags.BoolVar(&checker.Verbose, "verbose", false, "produce more verbose logging")
+
+	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
 
 	tags := tagsFlag{}
 	flags.Var(&tags, "tags", "space-separated list of build tags to include")

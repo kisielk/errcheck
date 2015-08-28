@@ -30,7 +30,7 @@ var (
 type UncheckedErrors struct {
 	// Errors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
-	Errors []error
+	Errors []UncheckedError
 }
 
 func (e UncheckedErrors) Error() string {
@@ -47,9 +47,9 @@ type byName struct{ UncheckedErrors }
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (e byName) Less(i, j int) bool {
-	ei, ej := e.Errors[i].(uncheckedError), e.Errors[j].(uncheckedError)
+	ei, ej := e.Errors[i], e.Errors[j]
 
-	pi, pj := ei.pos, ej.pos
+	pi, pj := ei.Pos, ej.Pos
 
 	if pi.Filename != pj.Filename {
 		return pi.Filename < pj.Filename
@@ -61,7 +61,7 @@ func (e byName) Less(i, j int) bool {
 		return pi.Column < pj.Column
 	}
 
-	return ei.line < ej.line
+	return ei.Line < ej.Line
 }
 
 type Checker struct {
@@ -112,7 +112,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	}
 
 	var errsMutex sync.Mutex
-	var errs []error
+	var errs []UncheckedError
 
 	var wg sync.WaitGroup
 
@@ -134,7 +134,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 				blank:   c.Blank,
 				asserts: c.Asserts,
 				lines:   make(map[string][]string),
-				errors:  []error{},
+				errors:  []UncheckedError{},
 			}
 
 			for _, astFile := range v.pkg.Files {
@@ -171,20 +171,12 @@ type visitor struct {
 	asserts bool
 	lines   map[string][]string
 
-	errors []error
+	errors []UncheckedError
 }
 
-type uncheckedError struct {
-	pos  token.Position
-	line string
-}
-
-func (e uncheckedError) Error() string {
-	pos := e.pos.String()
-	if i := strings.Index(pos, "/src/"); i != -1 {
-		pos = pos[i+len("/src/"):]
-	}
-	return fmt.Sprintf("%s\t%s", pos, e.line)
+type UncheckedError struct {
+	Pos  token.Position
+	Line string
 }
 
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
@@ -276,7 +268,7 @@ func (v *visitor) addErrorAtPosition(position token.Pos) {
 	if pos.Line-1 < len(lines) {
 		line = strings.TrimSpace(lines[pos.Line-1])
 	}
-	v.errors = append(v.errors, uncheckedError{pos, line})
+	v.errors = append(v.errors, UncheckedError{pos, line})
 }
 
 func readfile(filename string) []string {
