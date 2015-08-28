@@ -179,10 +179,6 @@ type UncheckedError struct {
 	Line string
 }
 
-func (e UncheckedError) Error() string {
-	return fmt.Sprintf("%s\t%s", e.Pos, e.Line)
-}
-
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
