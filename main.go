@@ -92,15 +92,11 @@ func mainCmd(args []string) int {
 	if err := checker.CheckPackages(paths...); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
 			for _, uncheckedError := range e.Errors {
-				if err, ok := uncheckedError.(errcheck.UncheckedError); ok {
-					pos := err.Pos.String()
-					if i := strings.Index(pos, "/src/"); i != -1 {
-						pos = pos[i+len("/src/"):]
-					}
-					fmt.Printf("%s\t%s\n", pos, err.Line)
-					continue
+				pos := uncheckedError.Pos.String()
+				if i := strings.Index(pos, "/src/"); i != -1 {
+					pos = pos[i+len("/src/"):]
 				}
-				fmt.Println(uncheckedError)
+				fmt.Printf("%s\t%s\n", pos, uncheckedError.Line)
 			}
 			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {

@@ -30,7 +30,7 @@ var (
 type UncheckedErrors struct {
 	// Errors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
-	Errors []error
+	Errors []UncheckedError
 }
 
 func (e UncheckedErrors) Error() string {
@@ -47,7 +47,7 @@ type byName struct{ UncheckedErrors }
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (e byName) Less(i, j int) bool {
-	ei, ej := e.Errors[i].(UncheckedError), e.Errors[j].(UncheckedError)
+	ei, ej := e.Errors[i], e.Errors[j]
 
 	pi, pj := ei.Pos, ej.Pos
 
@@ -112,7 +112,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	}
 
 	var errsMutex sync.Mutex
-	var errs []error
+	var errs []UncheckedError
 
 	var wg sync.WaitGroup
 
@@ -134,7 +134,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 				blank:   c.Blank,
 				asserts: c.Asserts,
 				lines:   make(map[string][]string),
-				errors:  []error{},
+				errors:  []UncheckedError{},
 			}
 
 			for _, astFile := range v.pkg.Files {
@@ -171,7 +171,7 @@ type visitor struct {
 	asserts bool
 	lines   map[string][]string
 
-	errors []error
+	errors []UncheckedError
 }
 
 type UncheckedError struct {
