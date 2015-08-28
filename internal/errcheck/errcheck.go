@@ -25,6 +25,12 @@ var (
 	ErrNoGoFiles = errors.New("package contains no go source files")
 )
 
+// UncheckedError indicates the position of an unchecked error return.
+type UncheckedError struct {
+	Pos  token.Position
+	Line string
+}
+
 // UncheckedErrors is returned from the CheckPackage function if the package contains
 // any unchecked errors.
 type UncheckedErrors struct {
@@ -172,11 +178,6 @@ type visitor struct {
 	lines   map[string][]string
 
 	errors []UncheckedError
-}
-
-type UncheckedError struct {
-	Pos  token.Position
-	Line string
 }
 
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
