@@ -82,6 +82,18 @@ func (f *tagsFlag) Set(s string) error {
 
 var dotStar = regexp.MustCompile(".*")
 
+func reportUncheckedErrors(e errcheck.UncheckedErrors) {
+	for _, uncheckedError := range e.Errors {
+		pos := uncheckedError.Pos.String()
+		if !abspath {
+			if i := strings.Index(pos, "/src/"); i != -1 {
+				pos = pos[i+len("/src/"):]
+			}
+		}
+		fmt.Printf("%s\t%s\n", pos, uncheckedError.Line)
+	}
+}
+
 func mainCmd(args []string) int {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -93,15 +105,7 @@ func mainCmd(args []string) int {
 
 	if err := checker.CheckPackages(paths...); err != nil {
 		if e, ok := err.(errcheck.UncheckedErrors); ok {
-			for _, uncheckedError := range e.Errors {
-				pos := uncheckedError.Pos.String()
-				if !abspath {
-					if i := strings.Index(pos, "/src/"); i != -1 {
-						pos = pos[i+len("/src/"):]
-					}
-				}
-				fmt.Printf("%s\t%s\n", pos, uncheckedError.Line)
-			}
+			reportUncheckedErrors(e)
 			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
