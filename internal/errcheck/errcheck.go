@@ -47,9 +47,9 @@ type byName struct{ UncheckedErrors }
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (e byName) Less(i, j int) bool {
-	ei, ej := e.Errors[i].(uncheckedError), e.Errors[j].(uncheckedError)
+	ei, ej := e.Errors[i].(UncheckedError), e.Errors[j].(UncheckedError)
 
-	pi, pj := ei.pos, ej.pos
+	pi, pj := ei.Pos, ej.Pos
 
 	if pi.Filename != pj.Filename {
 		return pi.Filename < pj.Filename
@@ -61,7 +61,7 @@ func (e byName) Less(i, j int) bool {
 		return pi.Column < pj.Column
 	}
 
-	return ei.line < ej.line
+	return ei.Line < ej.Line
 }
 
 type Checker struct {
@@ -174,17 +174,13 @@ type visitor struct {
 	errors []error
 }
 
-type uncheckedError struct {
-	pos  token.Position
-	line string
+type UncheckedError struct {
+	Pos  token.Position
+	Line string
 }
 
-func (e uncheckedError) Error() string {
-	pos := e.pos.String()
-	if i := strings.Index(pos, "/src/"); i != -1 {
-		pos = pos[i+len("/src/"):]
-	}
-	return fmt.Sprintf("%s\t%s", pos, e.line)
+func (e UncheckedError) Error() string {
+	return fmt.Sprintf("%s\t%s", e.Pos, e.Line)
 }
 
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
@@ -276,7 +272,7 @@ func (v *visitor) addErrorAtPosition(position token.Pos) {
 	if pos.Line-1 < len(lines) {
 		line = strings.TrimSpace(lines[pos.Line-1])
 	}
-	v.errors = append(v.errors, uncheckedError{pos, line})
+	v.errors = append(v.errors, UncheckedError{pos, line})
 }
 
 func readfile(filename string) []string {
