@@ -1,6 +1,7 @@
 package errcheck
 
 import (
+	"fmt"
 	"go/build"
 	"go/parser"
 	"go/token"
@@ -17,6 +18,14 @@ var (
 type marker struct {
 	file string
 	line int
+}
+
+func newMarker(e UncheckedError) marker {
+	return marker{e.Pos.Filename, e.Pos.Line}
+}
+
+func (m marker) String() string {
+	return fmt.Sprintf("%s:%d", m.file, m.line)
 }
 
 func init() {
@@ -61,8 +70,14 @@ func TestUnchecked(t *testing.T) {
 	numErrors := len(unchecked)
 	if len(uerr.Errors) != numErrors {
 		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
-		for i, err := range uerr.Errors {
-			t.Errorf("%d: %v", i, err)
+	unchecked_loop:
+		for k := range unchecked {
+			for _, e := range uerr.Errors {
+				if newMarker(e) == k {
+					continue unchecked_loop
+				}
+			}
+			t.Errorf("Expected unchecked at %s", k)
 		}
 		return
 	}
@@ -90,8 +105,23 @@ func TestBlank(t *testing.T) {
 	numErrors := len(unchecked) + len(blank)
 	if len(uerr.Errors) != numErrors {
 		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
-		for i, err := range uerr.Errors {
-			t.Errorf("%d: %v", i, err)
+	unchecked_loop:
+		for k := range unchecked {
+			for _, e := range uerr.Errors {
+				if newMarker(e) == k {
+					continue unchecked_loop
+				}
+			}
+			t.Errorf("Expected unchecked at %s", k)
+		}
+	blank_loop:
+		for k := range blank {
+			for _, e := range uerr.Errors {
+				if newMarker(e) == k {
+					continue blank_loop
+				}
+			}
+			t.Errorf("Expected blank at %s", k)
 		}
 		return
 	}

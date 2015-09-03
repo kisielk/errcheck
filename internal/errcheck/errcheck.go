@@ -20,6 +20,13 @@ import (
 	"golang.org/x/tools/go/types"
 )
 
+var errorType *types.Interface
+
+func init() {
+	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+
+}
+
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
 	ErrNoGoFiles = errors.New("package contains no go source files")
@@ -372,10 +379,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 }
 
 type obj interface {
-	Pkg() *types.Package
-	Name() string
+	Type() types.Type
 }
 
 func isErrorType(v obj) bool {
-	return v.Pkg() == nil && v.Name() == "error"
+	return types.Implements(v.Type(), errorType)
 }

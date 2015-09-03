@@ -25,6 +25,20 @@ func rec() {
 	defer recover() // UNCHECKED
 }
 
+type MyError string
+
+func (e MyError) Error() string {
+	return string(e)
+}
+
+func customError() error {
+	return MyError("an error occurred")
+}
+
+func customConcreteError() MyError {
+	return MyError("an error occurred")
+}
+
 func main() {
 	// Single error return
 	_ = a() // BLANK
@@ -33,6 +47,14 @@ func main() {
 	// Return another value and an error
 	_, _ = b() // BLANK
 	b()        // UNCHECKED
+
+	// Return a custom error type
+	_ = customError() // BLANK
+	customError()     // UNCHECKED
+
+	// Return a custom concrete error type
+	_ = customConcreteError() // BLANK
+	customConcreteError()     // UNCHECKED
 
 	// Method with a single error return
 	x := t{}
