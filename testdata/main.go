@@ -39,6 +39,17 @@ func customConcreteError() MyError {
 	return MyError("an error occurred")
 }
 
+type MyPointerError string
+
+func (e *MyPointerError) Error() string {
+	return string(*e)
+}
+
+func customPointerError() *MyPointerError {
+	e := MyPointerError("an error occurred")
+	return &e
+}
+
 func main() {
 	// Single error return
 	_ = a() // BLANK
@@ -55,6 +66,10 @@ func main() {
 	// Return a custom concrete error type
 	_ = customConcreteError() // BLANK
 	customConcreteError()     // UNCHECKED
+
+	// Return a custom pointer error type
+	_ = customPointerError() // BLANK
+	customPointerError()     // UNCHECKED
 
 	// Method with a single error return
 	x := t{}

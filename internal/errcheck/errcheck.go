@@ -229,13 +229,16 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 	switch t := v.pkg.Types[call].Type.(type) {
 	case *types.Named:
 		// Single return
-		return []bool{isErrorType(t.Obj())}
+		return []bool{isErrorType(t)}
+	case *types.Pointer:
+		// Single return via pointer
+		return []bool{isErrorType(t)}
 	case *types.Tuple:
 		// Multiple returns
 		s := make([]bool, t.Len())
 		for i := 0; i < t.Len(); i++ {
 			nt, ok := t.At(i).Type().(*types.Named)
-			s[i] = ok && isErrorType(nt.Obj())
+			s[i] = ok && isErrorType(nt)
 		}
 		return s
 	}
@@ -378,10 +381,6 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	return v
 }
 
-type obj interface {
-	Type() types.Type
-}
-
-func isErrorType(v obj) bool {
-	return types.Implements(v.Type(), errorType)
+func isErrorType(t types.Type) bool {
+	return types.Implements(t, errorType)
 }
