@@ -237,8 +237,16 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 		// Multiple returns
 		s := make([]bool, t.Len())
 		for i := 0; i < t.Len(); i++ {
-			nt, ok := t.At(i).Type().(*types.Named)
-			s[i] = ok && isErrorType(nt)
+			switch et := t.At(i).Type().(type) {
+			case *types.Named:
+				// Single return
+				s[i] = isErrorType(et)
+			case *types.Pointer:
+				// Single return via pointer
+				s[i] = isErrorType(et)
+			default:
+				s[i] = false
+			}
 		}
 		return s
 	}

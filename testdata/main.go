@@ -39,6 +39,10 @@ func customConcreteError() MyError {
 	return MyError("an error occurred")
 }
 
+func customConcreteErrorTuple() (int, MyError) {
+	return 0, MyError("an error occurred")
+}
+
 type MyPointerError string
 
 func (e *MyPointerError) Error() string {
@@ -48,6 +52,11 @@ func (e *MyPointerError) Error() string {
 func customPointerError() *MyPointerError {
 	e := MyPointerError("an error occurred")
 	return &e
+}
+
+func customPointerErrorTuple() (int, *MyPointerError) {
+	e := MyPointerError("an error occurred")
+	return 0, &e
 }
 
 func main() {
@@ -64,12 +73,16 @@ func main() {
 	customError()     // UNCHECKED
 
 	// Return a custom concrete error type
-	_ = customConcreteError() // BLANK
-	customConcreteError()     // UNCHECKED
+	_ = customConcreteError()         // BLANK
+	customConcreteError()             // UNCHECKED
+	_, _ = customConcreteErrorTuple() // BLANK
+	customConcreteErrorTuple()        // UNCHECKED
 
 	// Return a custom pointer error type
-	_ = customPointerError() // BLANK
-	customPointerError()     // UNCHECKED
+	_ = customPointerError()         // BLANK
+	customPointerError()             // UNCHECKED
+	_, _ = customPointerErrorTuple() // BLANK
+	customPointerErrorTuple()        // UNCHECKED
 
 	// Method with a single error return
 	x := t{}
