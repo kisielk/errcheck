@@ -94,6 +94,9 @@ type Checker struct {
 	Tags []string
 
 	Verbose bool
+
+	// If true, checking of of _test.go files is disabled
+	WithoutTests bool
 }
 
 func (c *Checker) logf(msg string, args ...interface{}) {
@@ -111,7 +114,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	loadcfg := loader.Config{
 		Build: &ctx,
 	}
-	rest, err := loadcfg.FromArgs(paths, true)
+	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
 		return fmt.Errorf("could not parse arguments: %s", err)
 	}

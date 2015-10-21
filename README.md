@@ -50,11 +50,13 @@ specified for it. To disable this, specify a regex that matches nothing:
 
     errcheck -ignore 'fmt:a^' path/to/package
 
+The `-ignoretests` flag disables checking of `_test.go` files.
+
 The `-tags` flag takes a space-separated list of build tags, just like `go
 build`. If you are using any custom build tags in your code base, you may need
 to specify the relevant tags here.
 
-The `-asserts` flag enabled checking for ignored type assertion results. It
+The `-asserts` flag enables checking for ignored type assertion results. It
 takes no arguments.
 
 The `-blank` flag enables checking for assignments of errors to the
