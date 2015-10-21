@@ -9,16 +9,23 @@ errcheck is a program for checking for unchecked errors in go programs.
 
     go get github.com/kisielk/errcheck
 
-errcheck requires Go 1.4 and depends on the go/types package from the golang.org/x/tools repository.
+errcheck requires Go 1.4 and depends on the packages go/loader and go/types from the golang.org/x/tools repository.
 
 ## Use
 
-For basic usage, just give the package path of interest as the first
-argument:
+For basic usage, just give the package path of interest as the first argument:
 
     errcheck github.com/kisielk/errcheck/testdata
 
-There are currently five flags: `-ignore`, `-ignorepkg`, `-tags`, `-asserts`, and `-blank`
+To check all packages beneath the current directory:
+
+    errcheck ./...
+
+Or check all packages in your $GOPATH and $GOROOT:
+
+    errcheck all
+
+Additionally, the following flags are available.
 
 The `-ignore` flag takes a comma-separated list of pairs of the form package:regex.
 For each package, the regex describes which functions to ignore within that package.
@@ -50,7 +57,8 @@ specified for it. To disable this, specify a regex that matches nothing:
 
     errcheck -ignore 'fmt:a^' path/to/package
 
-The `-ignoretests` flag disables checking of `_test.go` files.
+The `-ignoretests` flag disables checking of `_test.go` files. It takes
+no arguments.
 
 The `-tags` flag takes a space-separated list of build tags, just like `go
 build`. If you are using any custom build tags in your code base, you may need
@@ -61,18 +69,6 @@ takes no arguments.
 
 The `-blank` flag enables checking for assignments of errors to the
 blank identifier. It takes no arguments.
-
-An example of using errcheck to check the go standard library packages:
-
-    errcheck -ignore 'Close|[wW]rite.*|Flush|Seek|[rR]ead.*' std > stdlibcheck
-
-Or check all packages in your $GOPATH and $GOROOT:
-
-    errcheck all > allcheck
-
-To check all packages beneath the current directory:
-
-    errcheck ./...
 
 ## Cgo
 
