@@ -109,10 +109,10 @@ func main() {
 
 	// Type assertions
 	var i interface{}
-	s1 := i.(string)    // UNCHECKED
-	s1 = i.(string)     // UNCHECKED
-	s2, _ := i.(string) // BLANK
-	s2, _ = i.(string)  // BLANK
+	s1 := i.(string)    // ASSERT
+	s1 = i.(string)     // ASSERT
+	s2, _ := i.(string) // ASSERT
+	s2, _ = i.(string)  // ASSERT
 	s3, ok := i.(string)
 	s3, ok = i.(string)
 	switch s4 := i.(type) {

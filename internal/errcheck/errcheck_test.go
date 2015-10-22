@@ -11,8 +11,9 @@ import (
 const testPackage = "github.com/kisielk/errcheck/testdata"
 
 var (
-	unchecked map[marker]bool
-	blank     map[marker]bool
+	uncheckedMarkers map[marker]bool
+	blankMarkers     map[marker]bool
+	assertMarkers    map[marker]bool
 )
 
 type marker struct {
@@ -29,8 +30,9 @@ func (m marker) String() string {
 }
 
 func init() {
-	unchecked = make(map[marker]bool)
-	blank = make(map[marker]bool)
+	uncheckedMarkers = make(map[marker]bool)
+	blankMarkers = make(map[marker]bool)
+	assertMarkers = make(map[marker]bool)
 
 	pkg, err := build.Import(testPackage, "", 0)
 	if err != nil {
@@ -46,55 +48,49 @@ func init() {
 		for _, comment := range file.Comments {
 			text := comment.Text()
 			pos := fset.Position(comment.Pos())
+			m := marker{pos.Filename, pos.Line}
 			switch text {
 			case "UNCHECKED\n":
-				unchecked[marker{pos.Filename, pos.Line}] = true
+				uncheckedMarkers[m] = true
 			case "BLANK\n":
-				blank[marker{pos.Filename, pos.Line}] = true
+				blankMarkers[m] = true
+			case "ASSERT\n":
+				assertMarkers[m] = true
 			}
 		}
 	}
 }
 
+type flags uint
+
+const (
+	CheckAsserts flags = 1 << iota
+	CheckBlank
+)
+
 // TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
 func TestUnchecked(t *testing.T) {
-	checker := &Checker{
-		Asserts: true,
-	}
-	err := checker.CheckPackages(testPackage)
-	uerr, ok := err.(UncheckedErrors)
-	if !ok {
-		t.Fatal("wrong error type returned")
-	}
-
-	numErrors := len(unchecked)
-	if len(uerr.Errors) != numErrors {
-		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
-	unchecked_loop:
-		for k := range unchecked {
-			for _, e := range uerr.Errors {
-				if newMarker(e) == k {
-					continue unchecked_loop
-				}
-			}
-			t.Errorf("Expected unchecked at %s", k)
-		}
-		return
-	}
-
-	for i, err := range uerr.Errors {
-		m := marker{err.Pos.Filename, err.Pos.Line}
-		if !unchecked[m] {
-			t.Errorf("%d: unexpected error: %v", i, err)
-		}
-	}
+	test(t, 0)
 }
 
 // TestBlank is like TestUnchecked but also ensures assignments to the blank identifier are caught.
 func TestBlank(t *testing.T) {
+	test(t, CheckBlank)
+}
+
+func TestAll(t *testing.T) {
+	// TODO: CheckAsserts should work independently of CheckBlank
+	test(t, CheckAsserts|CheckBlank)
+}
+
+func test(t *testing.T, f flags) {
+	var (
+		asserts bool = f&CheckAsserts != 0
+		blank   bool = f&CheckBlank != 0
+	)
 	checker := &Checker{
-		Asserts: true,
-		Blank:   true,
+		Asserts: asserts,
+		Blank:   blank,
 	}
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(UncheckedErrors)
@@ -102,11 +98,18 @@ func TestBlank(t *testing.T) {
 		t.Fatal("wrong error type returned")
 	}
 
-	numErrors := len(unchecked) + len(blank)
+	numErrors := len(uncheckedMarkers)
+	if blank {
+		numErrors += len(blankMarkers)
+	}
+	if asserts {
+		numErrors += len(assertMarkers)
+	}
+
 	if len(uerr.Errors) != numErrors {
 		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
 	unchecked_loop:
-		for k := range unchecked {
+		for k := range uncheckedMarkers {
 			for _, e := range uerr.Errors {
 				if newMarker(e) == k {
 					continue unchecked_loop
@@ -114,21 +117,33 @@ func TestBlank(t *testing.T) {
 			}
 			t.Errorf("Expected unchecked at %s", k)
 		}
-	blank_loop:
-		for k := range blank {
-			for _, e := range uerr.Errors {
-				if newMarker(e) == k {
-					continue blank_loop
+		if blank {
+		blank_loop:
+			for k := range blankMarkers {
+				for _, e := range uerr.Errors {
+					if newMarker(e) == k {
+						continue blank_loop
+					}
 				}
+				t.Errorf("Expected blank at %s", k)
 			}
-			t.Errorf("Expected blank at %s", k)
 		}
-		return
+		if asserts {
+		assert_loop:
+			for k := range assertMarkers {
+				for _, e := range uerr.Errors {
+					if newMarker(e) == k {
+						continue assert_loop
+					}
+				}
+				t.Errorf("Expected assert at %s", k)
+			}
+		}
 	}
 
 	for i, err := range uerr.Errors {
 		m := marker{err.Pos.Filename, err.Pos.Line}
-		if !unchecked[m] && !blank[m] {
+		if !uncheckedMarkers[m] && !blankMarkers[m] && !assertMarkers[m] {
 			t.Errorf("%d: unexpected error: %v", i, err)
 		}
 	}
