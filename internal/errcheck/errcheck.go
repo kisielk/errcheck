@@ -84,6 +84,9 @@ type Checker struct {
 	// is not checked.
 	Ignore map[string]*regexp.Regexp
 
+	// A call will be ignored if it has a comment with the prefix IgnoreComment.
+	IgnoreComment string
+
 	// If blank is true then assignments to the blank identifier are also considered to be
 	// ignored errors.
 	Blank bool
@@ -146,13 +149,14 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			c.logf("Checking %s", pkgInfo.Pkg.Path())
 
 			v := &visitor{
-				prog:    program,
-				pkg:     pkgInfo,
-				ignore:  c.Ignore,
-				blank:   c.Blank,
-				asserts: c.Asserts,
-				lines:   make(map[string][]string),
-				errors:  []UncheckedError{},
+				prog:       program,
+				pkg:        pkgInfo,
+				ignore:     c.Ignore,
+				igncomment: c.IgnoreComment,
+				blank:      c.Blank,
+				asserts:    c.Asserts,
+				lines:      make(map[string][]string),
+				errors:     []UncheckedError{},
 			}
 
 			for _, astFile := range v.pkg.Files {
@@ -183,26 +187,31 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 // visitor implements the errcheck algorithm
 type visitor struct {
-	prog    *loader.Program
-	pkg     *loader.PackageInfo
-	ignore  map[string]*regexp.Regexp
-	blank   bool
-	asserts bool
-	lines   map[string][]string
-	cmap    ast.CommentMap
+	prog       *loader.Program
+	pkg        *loader.PackageInfo
+	ignore     map[string]*regexp.Regexp
+	igncomment string
+	blank      bool
+	asserts    bool
+	lines      map[string][]string
+	cmap       ast.CommentMap
 
 	errors []UncheckedError
 }
 
 func (v *visitor) ignoreComment(node ast.Node) bool {
+	if v.igncomment == "" {
+		return false
+	}
+
 	// Get comment groups associated with the node.
 	cgroups := v.cmap[node]
-	// Return true if any comment begins with "ERRCHECK_IGNORE".
+	// Return true if any comment begins with v.igncomment.
 	for _, cgroup := range cgroups {
 		for _, comm := range cgroup.List {
 			// Trim the leading "//" or "/*" and leading and trailing whitespace.
 			str := strings.TrimSpace(comm.Text[2:])
-			if strings.HasPrefix(str, "ERRCHECK_IGNORE") {
+			if strings.HasPrefix(str, v.igncomment) {
 				return true
 			}
 		}
