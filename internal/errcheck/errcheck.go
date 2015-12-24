@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/parser"
 	"go/token"
 	"os"
 	"regexp"
@@ -112,7 +113,8 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		ctx.BuildTags = append(ctx.BuildTags, tag)
 	}
 	loadcfg := loader.Config{
-		Build: &ctx,
+		Build:      &ctx,
+		ParserMode: parser.ParseComments,
 	}
 	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
@@ -154,6 +156,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			}
 
 			for _, astFile := range v.pkg.Files {
+				v.cmap = ast.NewCommentMap(v.prog.Fset, astFile, astFile.Comments)
 				ast.Walk(v, astFile)
 			}
 			if len(v.errors) > 0 {
@@ -186,8 +189,21 @@ type visitor struct {
 	blank   bool
 	asserts bool
 	lines   map[string][]string
+	cmap    ast.CommentMap
 
 	errors []UncheckedError
+}
+
+func (v *visitor) ignoreComment(node ast.Node) bool {
+	// Get comment groups associated with the node.
+	cgroups := v.cmap[node]
+	// Return true if any comment group begins with "ERRCHECK_IGNORE".
+	for _, cgroup := range cgroups {
+		if strings.HasPrefix(cgroup.Text(), "ERRCHECK_IGNORE") {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
@@ -311,16 +327,16 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
 		if call, ok := stmt.X.(*ast.CallExpr); ok {
-			if !v.ignoreCall(call) && v.callReturnsError(call) {
+			if !v.ignoreComment(node) && !v.ignoreCall(call) && v.callReturnsError(call) {
 				v.addErrorAtPosition(call.Lparen)
 			}
 		}
 	case *ast.GoStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if !v.ignoreComment(node) && !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.DeferStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if !v.ignoreComment(node) && !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.AssignStmt:
@@ -328,6 +344,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			// single value on rhs; check against lhs identifiers
 			if call, ok := stmt.Rhs[0].(*ast.CallExpr); ok {
 				if !v.blank {
+					break
+				}
+				if v.ignoreComment(node) {
 					break
 				}
 				if v.ignoreCall(call) {
@@ -351,6 +370,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 					// type switch
 					break
 				}
+				if v.ignoreComment(node) {
+					break
+				}
 				if len(stmt.Lhs) < 2 {
 					// assertion result not read
 					v.addErrorAtPosition(stmt.Rhs[0].Pos())
@@ -368,6 +390,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 						if !v.blank {
 							continue
 						}
+						if v.ignoreComment(node) {
+							break
+						}
 						if v.ignoreCall(call) {
 							continue
 						}
@@ -381,6 +406,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 						if assert.Type == nil {
 							// Shouldn't happen anyway, no multi assignment in type switches
 							continue
+						}
+						if v.ignoreComment(node) {
+							break
 						}
 						v.addErrorAtPosition(id.NamePos)
 					}
