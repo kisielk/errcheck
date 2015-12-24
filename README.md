@@ -60,6 +60,14 @@ specified for it. To disable this, specify a regex that matches nothing:
 The `-ignoretests` flag disables checking of `_test.go` files. It takes
 no arguments.
 
+The `-ignorecomment` flag takes a string that specifies a comment prefix to
+ignore. Any call with a comment that has has the prefix will be ignored. For
+example, `errcheck -ignorecomment ERRCHECK_IGNORE` will ignore the call:
+```go
+// ERRCHECK_IGNORE: ignore this error because it is always nil.
+funcThatReturnsAnError()
+```
+
 The `-tags` flag takes a space-separated list of build tags, just like `go
 build`. If you are using any custom build tags in your code base, you may need
 to specify the relevant tags here.
