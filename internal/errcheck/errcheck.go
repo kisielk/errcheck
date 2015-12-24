@@ -197,10 +197,14 @@ type visitor struct {
 func (v *visitor) ignoreComment(node ast.Node) bool {
 	// Get comment groups associated with the node.
 	cgroups := v.cmap[node]
-	// Return true if any comment group begins with "ERRCHECK_IGNORE".
+	// Return true if any comment begins with "ERRCHECK_IGNORE".
 	for _, cgroup := range cgroups {
-		if strings.HasPrefix(cgroup.Text(), "ERRCHECK_IGNORE") {
-			return true
+		for _, comm := range cgroup.List {
+			// Trim the leading "//" or "/*" and leading and trailing whitespace.
+			str := strings.TrimSpace(comm.Text[2:])
+			if strings.HasPrefix(str, "ERRCHECK_IGNORE") {
+				return true
+			}
 		}
 	}
 	return false
