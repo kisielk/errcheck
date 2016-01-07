@@ -16,8 +16,9 @@ import (
 	"strings"
 	"sync"
 
+	"go/types"
+
 	"golang.org/x/tools/go/loader"
-	"golang.org/x/tools/go/types"
 )
 
 var errorType *types.Interface
