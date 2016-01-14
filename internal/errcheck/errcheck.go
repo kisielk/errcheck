@@ -41,23 +41,32 @@ type UncheckedError struct {
 
 // UncheckedErrors is returned from the CheckPackage function if the package contains
 // any unchecked errors.
+// Errors should be appended using the Append method, which is safe to use concurrently.
 type UncheckedErrors struct {
+	mu sync.Mutex
+
 	// Errors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
 	Errors []UncheckedError
 }
 
-func (e UncheckedErrors) Error() string {
+func (e *UncheckedErrors) Append(errors ...UncheckedError) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.Errors = append(e.Errors, errors...)
+}
+
+func (e *UncheckedErrors) Error() string {
 	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
 }
 
 // Len is the number of elements in the collection.
-func (e UncheckedErrors) Len() int { return len(e.Errors) }
+func (e *UncheckedErrors) Len() int { return len(e.Errors) }
 
 // Swap swaps the elements with indexes i and j.
-func (e UncheckedErrors) Swap(i, j int) { e.Errors[i], e.Errors[j] = e.Errors[j], e.Errors[i] }
+func (e *UncheckedErrors) Swap(i, j int) { e.Errors[i], e.Errors[j] = e.Errors[j], e.Errors[i] }
 
-type byName struct{ UncheckedErrors }
+type byName struct{ *UncheckedErrors }
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (e byName) Less(i, j int) bool {
@@ -106,8 +115,7 @@ func (c *Checker) logf(msg string, args ...interface{}) {
 	}
 }
 
-// CheckPackages checks packages for errors.
-func (c *Checker) CheckPackages(paths ...string) error {
+func (c *Checker) load(paths ...string) (*loader.Program, error) {
 	ctx := build.Default
 	for _, tag := range c.Tags {
 		ctx.BuildTags = append(ctx.BuildTags, tag)
@@ -117,22 +125,24 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	}
 	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
-		return fmt.Errorf("could not parse arguments: %s", err)
+		return nil, fmt.Errorf("could not parse arguments: %s", err)
 	}
 	if len(rest) > 0 {
-		return fmt.Errorf("unhandled extra arguments: %v", rest)
+		return nil, fmt.Errorf("unhandled extra arguments: %v", rest)
 	}
 
-	program, err := loadcfg.Load()
+	return loadcfg.Load()
+}
+
+// CheckPackages checks packages for errors.
+func (c *Checker) CheckPackages(paths ...string) error {
+	program, err := c.load(paths...)
 	if err != nil {
 		return fmt.Errorf("could not type check: %s", err)
 	}
 
-	var errsMutex sync.Mutex
-	var errs []UncheckedError
-
 	var wg sync.WaitGroup
-
+	u := &UncheckedErrors{}
 	for _, pkgInfo := range program.InitialPackages() {
 		if pkgInfo.Pkg.Path() == "unsafe" { // not a real package
 			continue
@@ -157,25 +167,15 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			for _, astFile := range v.pkg.Files {
 				ast.Walk(v, astFile)
 			}
-			if len(v.errors) > 0 {
-				errsMutex.Lock()
-				defer errsMutex.Unlock()
-
-				errs = append(errs, v.errors...)
-			}
+			u.Append(v.errors...)
 		}(pkgInfo)
 	}
 
 	wg.Wait()
-
-	if len(errs) > 0 {
-		u := UncheckedErrors{errs}
-
+	if u.Len() > 0 {
 		sort.Sort(byName{u})
-
 		return u
 	}
-
 	return nil
 }
 
