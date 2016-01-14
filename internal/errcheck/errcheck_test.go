@@ -93,7 +93,7 @@ func test(t *testing.T, f flags) {
 		Blank:   blank,
 	}
 	err := checker.CheckPackages(testPackage)
-	uerr, ok := err.(UncheckedErrors)
+	uerr, ok := err.(*UncheckedErrors)
 	if !ok {
 		t.Fatal("wrong error type returned")
 	}
