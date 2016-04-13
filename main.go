@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/build"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -83,11 +84,16 @@ func (f *tagsFlag) Set(s string) error {
 var dotStar = regexp.MustCompile(".*")
 
 func reportUncheckedErrors(e *errcheck.UncheckedErrors) {
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = ""
+	}
 	for _, uncheckedError := range e.Errors {
 		pos := uncheckedError.Pos.String()
 		if !abspath {
-			if i := strings.Index(pos, "/src/"); i != -1 {
-				pos = pos[i+len("/src/"):]
+			newPos, err := filepath.Rel(wd, pos)
+			if err == nil {
+				pos = newPos
 			}
 		}
 		fmt.Printf("%s\t%s\n", pos, uncheckedError.Line)
