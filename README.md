@@ -9,7 +9,7 @@ errcheck is a program for checking for unchecked errors in go programs.
 
     go get -u github.com/kisielk/errcheck
 
-errcheck requires Go 1.5 and depends on the package go/loader from the golang.org/x/tools repository.
+errcheck requires Go 1.5 or newer and depends on the package go/loader from the golang.org/x/tools repository.
 
 ## Use
 
