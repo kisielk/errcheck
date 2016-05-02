@@ -96,5 +96,5 @@ and customizable variables to automatically pass flags to errcheck.
 
 ## Vim
 
-[go-errcheck-vim](https://github.com/mattn/go-errcheck-vim)
-integrates errcheck with Vim's quickfix.
+[vim-go](https://github.com/fatih/vim-go) can run errcheck via both its `:GoErrCheck`
+and `:GoMetaLinter` commands.
