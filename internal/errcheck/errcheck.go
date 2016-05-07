@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/parser"
 	"go/token"
 	"os"
 	"regexp"
@@ -93,6 +94,9 @@ type Checker struct {
 	// is not checked.
 	Ignore map[string]*regexp.Regexp
 
+	// A call will be ignored if it has a comment with the prefix IgnoreComment.
+	IgnoreComment string
+
 	// If blank is true then assignments to the blank identifier are also considered to be
 	// ignored errors.
 	Blank bool
@@ -121,7 +125,8 @@ func (c *Checker) load(paths ...string) (*loader.Program, error) {
 		ctx.BuildTags = append(ctx.BuildTags, tag)
 	}
 	loadcfg := loader.Config{
-		Build: &ctx,
+		Build:      &ctx,
+		ParserMode: parser.ParseComments,
 	}
 	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
@@ -155,16 +160,18 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			c.logf("Checking %s", pkgInfo.Pkg.Path())
 
 			v := &visitor{
-				prog:    program,
-				pkg:     pkgInfo,
-				ignore:  c.Ignore,
-				blank:   c.Blank,
-				asserts: c.Asserts,
-				lines:   make(map[string][]string),
-				errors:  []UncheckedError{},
+				prog:       program,
+				pkg:        pkgInfo,
+				ignore:     c.Ignore,
+				igncomment: c.IgnoreComment,
+				blank:      c.Blank,
+				asserts:    c.Asserts,
+				lines:      make(map[string][]string),
+				errors:     []UncheckedError{},
 			}
 
 			for _, astFile := range v.pkg.Files {
+				v.cmap = ast.NewCommentMap(v.prog.Fset, astFile, astFile.Comments)
 				ast.Walk(v, astFile)
 			}
 			u.Append(v.errors...)
@@ -181,14 +188,36 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 // visitor implements the errcheck algorithm
 type visitor struct {
-	prog    *loader.Program
-	pkg     *loader.PackageInfo
-	ignore  map[string]*regexp.Regexp
-	blank   bool
-	asserts bool
-	lines   map[string][]string
+	prog       *loader.Program
+	pkg        *loader.PackageInfo
+	ignore     map[string]*regexp.Regexp
+	igncomment string
+	blank      bool
+	asserts    bool
+	lines      map[string][]string
+	cmap       ast.CommentMap
 
 	errors []UncheckedError
+}
+
+func (v *visitor) ignoreComment(node ast.Node) bool {
+	if v.igncomment == "" {
+		return false
+	}
+
+	// Get comment groups associated with the node.
+	cgroups := v.cmap[node]
+	// Return true if any comment begins with v.igncomment.
+	for _, cgroup := range cgroups {
+		for _, comm := range cgroup.List {
+			// Trim the leading "//" or "/*" and leading and trailing whitespace.
+			str := strings.TrimSpace(comm.Text[2:])
+			if strings.HasPrefix(str, v.igncomment) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
@@ -312,16 +341,16 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
 		if call, ok := stmt.X.(*ast.CallExpr); ok {
-			if !v.ignoreCall(call) && v.callReturnsError(call) {
+			if !v.ignoreComment(node) && !v.ignoreCall(call) && v.callReturnsError(call) {
 				v.addErrorAtPosition(call.Lparen)
 			}
 		}
 	case *ast.GoStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if !v.ignoreComment(node) && !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.DeferStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if !v.ignoreComment(node) && !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen)
 		}
 	case *ast.AssignStmt:
@@ -329,6 +358,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			// single value on rhs; check against lhs identifiers
 			if call, ok := stmt.Rhs[0].(*ast.CallExpr); ok {
 				if !v.blank {
+					break
+				}
+				if v.ignoreComment(node) {
 					break
 				}
 				if v.ignoreCall(call) {
@@ -352,6 +384,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 					// type switch
 					break
 				}
+				if v.ignoreComment(node) {
+					break
+				}
 				if len(stmt.Lhs) < 2 {
 					// assertion result not read
 					v.addErrorAtPosition(stmt.Rhs[0].Pos())
@@ -369,6 +404,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 						if !v.blank {
 							continue
 						}
+						if v.ignoreComment(node) {
+							break
+						}
 						if v.ignoreCall(call) {
 							continue
 						}
@@ -382,6 +420,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 						if assert.Type == nil {
 							// Shouldn't happen anyway, no multi assignment in type switches
 							continue
+						}
+						if v.ignoreComment(node) {
+							break
 						}
 						v.addErrorAtPosition(id.NamePos)
 					}

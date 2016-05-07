@@ -140,6 +140,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	})
 	flags.Var(ignore, "ignore", "comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg")
+	flags.StringVar(&checker.IgnoreComment, "ignorecomment", "", "comment prefix that causes a call to be ignored")
 
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, exitFatalError
