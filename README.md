@@ -1,5 +1,4 @@
 # errcheck
-========
 
 errcheck is a program for checking for unchecked errors in go programs.
 
