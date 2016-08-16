@@ -1,6 +1,12 @@
 language: go
-go: 1.5.2
 sudo: false
+
+matrix:
+  include:
+    - go: 1.5
+    - go: 1.6
+    - go: 1.7
+    - go: tip
 
 script:
   - go test -race ./...
