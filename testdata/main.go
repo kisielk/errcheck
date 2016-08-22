@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 func a() error {
 	fmt.Println("this function returns an error") // UNCHECKED
@@ -124,4 +127,11 @@ func main() {
 	// Goroutine
 	go a()    // UNCHECKED
 	defer a() // UNCHECKED
+
+	// Ignore safe methods
+	buf := new(bytes.Buffer)
+	buf.Write(nil)
+	buf.WriteByte(0)
+	buf.WriteRune(0)
+	buf.WriteString("")
 }

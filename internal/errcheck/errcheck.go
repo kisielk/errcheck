@@ -223,6 +223,17 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 		}
 	}
 
+	// Ignore standard library methods that promise not to return a non nil error
+	switch v.pkg.Uses[id].String() {
+	case
+		"func (*bytes.Buffer).Write(p []byte) (n int, err error)",
+		"func (*bytes.Buffer).WriteByte(c byte) error",
+		"func (*bytes.Buffer).WriteRune(r rune) (n int, err error)",
+		"func (*bytes.Buffer).WriteString(s string) (n int, err error)":
+
+		return true
+	}
+
 	return false
 }
 
