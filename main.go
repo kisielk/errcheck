@@ -124,11 +124,13 @@ func mainCmd(args []string) int {
 }
 
 func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
+	var ignoreVendored bool
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.BoolVar(&checker.Blank, "blank", false, "if true, check for errors assigned to blank identifier")
 	flags.BoolVar(&checker.Asserts, "asserts", false, "if true, check for ignored type assertion results")
 	flags.BoolVar(&checker.WithoutTests, "ignoretests", false, "if true, checking of _test.go files is disabled")
 	flags.BoolVar(&checker.Verbose, "verbose", false, "produce more verbose logging")
+	flags.BoolVar(&ignoreVendored, "ignorevendor", false, "if true, ignore packages in vendor directory")
 
 	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
 
@@ -159,7 +161,22 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	ctx.BuildContext.BuildTags = tags
 
 	// ImportPaths normalizes paths and expands '...'
-	return gotool.ImportPaths(flags.Args()), exitCodeOk
+	paths := gotool.ImportPaths(flags.Args())
+	if ignoreVendored {
+		paths = stripVendored(paths)
+	}
+
+	return paths, exitCodeOk
+}
+
+func stripVendored(paths []string) []string {
+	newPaths := paths[:0]
+	for _, path := range paths {
+		if !strings.HasPrefix(path, "./vendor") {
+			newPaths = append(newPaths, path)
+		}
+	}
+	return newPaths
 }
 
 func main() {
