@@ -5,6 +5,12 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"io/ioutil"
+	"os"
+	"path"
+	"regexp"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +87,93 @@ func TestBlank(t *testing.T) {
 func TestAll(t *testing.T) {
 	// TODO: CheckAsserts should work independently of CheckBlank
 	test(t, CheckAsserts|CheckBlank)
+}
+
+const testVendorMain = `
+	package main
+
+	import "github.com/testlog"
+
+	func main() {
+		// returns an error that is not checked
+		testlog.Info()
+	}`
+const testLog = `
+	package testlog
+
+	func Info() error {
+		return nil
+	}`
+
+func TestIgnore(t *testing.T) {
+	if strings.HasPrefix(runtime.Version(), "go1.5") && os.Getenv("GO15VENDOREXPERIMENT") != "1" {
+		// skip tests if running in go1.5 and vendoring is not enabled
+		t.SkipNow()
+	}
+
+	// copy testvendor directory into current directory for test
+	testVendorDir, err := ioutil.TempDir(".", "testvendor")
+	if err != nil {
+		t.Fatalf("unable to create testvendor directory: %v", err)
+	}
+	defer os.RemoveAll(testVendorDir)
+
+	if err := ioutil.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
+		t.Fatalf("Failed to write testvendor main: %v", err)
+	}
+	if err := os.MkdirAll(path.Join(testVendorDir, "vendor/github.com/testlog"), 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := ioutil.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
+		t.Fatalf("Failed to write testlog: %v", err)
+	}
+
+	cases := []struct {
+		ignore          map[string]*regexp.Regexp
+		numExpectedErrs int
+	}{
+		// basic case has one error
+		{
+			ignore:          nil,
+			numExpectedErrs: 1,
+		},
+		// ignoring vendored import works
+		{
+			ignore: map[string]*regexp.Regexp{
+				path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir, "vendor/github.com/testlog"): regexp.MustCompile("Info"),
+			},
+		},
+		// non-vendored path ignores vendored import
+		{
+			ignore: map[string]*regexp.Regexp{
+				"github.com/testlog": regexp.MustCompile("Info"),
+			},
+		},
+	}
+
+	for i, currCase := range cases {
+		checker := &Checker{
+			Ignore: currCase.ignore,
+		}
+		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir))
+
+		if currCase.numExpectedErrs == 0 {
+			if err != nil {
+				t.Errorf("Case %d: expected no errors, but got: %v", i, err)
+			}
+			continue
+		}
+
+		uerr, ok := err.(*UncheckedErrors)
+		if !ok {
+			t.Errorf("Case %d: wrong error type returned", i)
+			continue
+		}
+
+		if currCase.numExpectedErrs != len(uerr.Errors) {
+			t.Errorf("Case %d:\nExpected: %d errors\nActual:   %d errors", i, currCase.numExpectedErrs, len(uerr.Errors))
+		}
+	}
 }
 
 func test(t *testing.T, f flags) {
