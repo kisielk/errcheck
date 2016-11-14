@@ -1,6 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+	"math/rand"
+	mrand "math/rand"
+)
 
 func a() error {
 	fmt.Println("this function returns an error") // UNCHECKED
@@ -124,4 +129,11 @@ func main() {
 	// Goroutine
 	go a()    // UNCHECKED
 	defer a() // UNCHECKED
+
+	b1 := bytes.Buffer{}
+	b2 := &bytes.Buffer{}
+	b1.Write(nil)
+	b2.Write(nil)
+	rand.Read(nil)
+	mrand.Read(nil)
 }

@@ -190,7 +190,43 @@ type visitor struct {
 	errors []UncheckedError
 }
 
+func (v *visitor) builtinIgnoreCall(call *ast.CallExpr) bool {
+	// TODO(dh): find a better name for this method
+	ignored := map[string]bool{
+		"math/rand.Read":         true,
+		"(*math/rand.Rand).Read": true,
+
+		"(*bytes.Buffer).Write":       true,
+		"(*bytes.Buffer).WriteByte":   true,
+		"(*bytes.Buffer).WriteRune":   true,
+		"(*bytes.Buffer).WriteString": true,
+	}
+
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	fn, ok := v.pkg.ObjectOf(sel.Sel).(*types.Func)
+	if !ok {
+		// Shouldn't happen, but be paranoid
+		return false
+	}
+	// The name is fully qualified by the import path, possible type,
+	// function/method name and pointer receiver.
+	//
+	// TODO(dh): vendored packages will have /vendor/ in their name,
+	// thus not matching vendored standard library packages. If we
+	// want to support vendored stdlib packages, we need to implement
+	// FullName with our own logic.
+	name := fn.FullName()
+	return ignored[name]
+}
+
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
+	if v.builtinIgnoreCall(call) {
+		return true
+	}
+
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
