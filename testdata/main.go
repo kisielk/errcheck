@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	mrand "math/rand"
 )
@@ -136,4 +137,6 @@ func main() {
 	b2.Write(nil)
 	rand.Read(nil)
 	mrand.Read(nil)
+
+	ioutil.ReadFile("main.go") // UNCHECKED
 }
