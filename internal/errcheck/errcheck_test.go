@@ -89,6 +89,10 @@ func TestAll(t *testing.T) {
 	test(t, CheckAsserts|CheckBlank)
 }
 
+func TestWhitelist(t *testing.T) {
+
+}
+
 const testVendorMain = `
 	package main
 
@@ -152,9 +156,8 @@ func TestIgnore(t *testing.T) {
 	}
 
 	for i, currCase := range cases {
-		checker := &Checker{
-			Ignore: currCase.ignore,
-		}
+		checker := NewChecker()
+		checker.Ignore = currCase.ignore
 		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir))
 
 		if currCase.numExpectedErrs == 0 {
@@ -181,10 +184,9 @@ func test(t *testing.T, f flags) {
 		asserts bool = f&CheckAsserts != 0
 		blank   bool = f&CheckBlank != 0
 	)
-	checker := &Checker{
-		Asserts: asserts,
-		Blank:   blank,
-	}
+	checker := NewChecker()
+	checker.Asserts = asserts
+	checker.Blank = blank
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {

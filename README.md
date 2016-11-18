@@ -37,11 +37,27 @@ The `-blank` flag enables checking for assignments of errors to the
 blank identifier. It takes no arguments.
 
 
-## Whitelist
-errcheck has an internal whitelist for functions in the Go standard library that
+## Excluding functions
+
+Use the `-exclude` flag to specify a path to a file containing a list of functions to
+be excluded.
+
+    errcheck -exclude errcheck_excludes.txt path/to/package
+
+The file should contain one function signature per line. The format for function signatures is
+`package.FunctionName` while for methods it's `(package.Receiver).MethodName` for value receivers
+and `(*package.Receiver).MethodName` for pointer receivers.
+
+An example of an exclude file is:
+
+    io/ioutil.ReadFile
+    (*net/http.Client).Do
+
+The exclude list is combined with an internal list for functions in the Go standard library that
 have an error return type but are documented to never return an error.
 
-## Ignoring functions
+
+### The deprecated method
 
 The `-ignore` flag takes a comma-separated list of pairs of the form package:regex.
 For each package, the regex describes which functions to ignore within that package.
