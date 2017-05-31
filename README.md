@@ -92,6 +92,25 @@ specified for it. To disable this, specify a regex that matches nothing:
 The `-ignoretests` flag disables checking of `_test.go` files. It takes
 no arguments.
 
+The `-tags` flag takes a space-separated list of build tags, just like `go
+build`. If you are using any custom build tags in your code base, you may need
+to specify the relevant tags here.
+
+The `-asserts` flag enables checking for ignored type assertion results. It
+takes no arguments.
+
+The `-blank` flag enables checking for assignments of errors to the
+blank identifier. It takes no arguments.
+
+### Ignore lines with comment
+
+It is possible to ignore specific lines in the code by commenting the line with
+`errcheck-ignore`.
+
+```
+defer w.Body.Close() // errcheck-ignore
+```
+
 ## Cgo
 
 Currently errcheck is unable to check packages that `import "C"` due to limitations
