@@ -100,8 +100,9 @@ func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
 		if verbose && uncheckedError.FuncName != "" {
 			fmt.Printf("%s:\t%s\t%s\n", pos, uncheckedError.FuncName, uncheckedError.Line)
 		} else {
-			fmt.Printf("%s:\t%s\n", pos, uncheckedError.Line)
-		}
+			if !strings.Contains(uncheckedError.Line, "errcheck-ignore") {
+				fmt.Printf("%s:\t%s\n", pos, uncheckedError.Line)
+			}
 	}
 }
 
