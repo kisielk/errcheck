@@ -105,7 +105,7 @@ type Checker struct {
 
 	Verbose bool
 
-	// If true, checking of of _test.go files is disabled
+	// If true, checking of _test.go files is disabled
 	WithoutTests bool
 
 	exclude map[string]bool
