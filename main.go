@@ -83,10 +83,13 @@ func (f *tagsFlag) Set(s string) error {
 
 var dotStar = regexp.MustCompile(".*")
 
-func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
+func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool, reason string) {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = ""
+	}
+	if reason != "" {
+		reason = reason + "\t"
 	}
 	for _, uncheckedError := range e.Errors {
 		pos := uncheckedError.Pos.String()
@@ -98,9 +101,9 @@ func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
 		}
 
 		if verbose && uncheckedError.FuncName != "" {
-			fmt.Printf("%s:\t%s\t%s\n", pos, uncheckedError.FuncName, uncheckedError.Line)
+			fmt.Printf("%s:\t%s%s\t%s\n", pos, reason, uncheckedError.FuncName, uncheckedError.Line)
 		} else {
-			fmt.Printf("%s:\t%s\n", pos, uncheckedError.Line)
+			fmt.Printf("%s:\t%s%s\n", pos, reason, uncheckedError.Line)
 		}
 	}
 }
@@ -116,7 +119,7 @@ func mainCmd(args []string) int {
 
 	if err := checker.CheckPackages(paths...); err != nil {
 		if e, ok := err.(*errcheck.UncheckedErrors); ok {
-			reportUncheckedErrors(e, checker.Verbose)
+			reportUncheckedErrors(e, checker.Verbose, checker.Reason)
 			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
@@ -134,6 +137,8 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.BoolVar(&checker.Asserts, "asserts", false, "if true, check for ignored type assertion results")
 	flags.BoolVar(&checker.WithoutTests, "ignoretests", false, "if true, checking of _test.go files is disabled")
 	flags.BoolVar(&checker.Verbose, "verbose", false, "produce more verbose logging")
+	flags.StringVar(&checker.OnlyCheck, "only", "", "only check a single file")
+	flags.StringVar(&checker.Reason, "reason", "", "text to go between file:lineno and code")
 
 	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
 

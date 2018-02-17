@@ -11,7 +11,9 @@ import (
 	"go/build"
 	"go/token"
 	"go/types"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -108,6 +110,12 @@ type Checker struct {
 	// If true, checking of _test.go files is disabled
 	WithoutTests bool
 
+	//Only check a single file
+	OnlyCheck string
+
+	//Extra output (to help distinguish output from other linters)
+	Reason string
+
 	exclude map[string]bool
 }
 
@@ -147,14 +155,39 @@ func (c *Checker) load(paths ...string) (*loader.Program, error) {
 	loadcfg := loader.Config{
 		Build: &ctx,
 	}
-	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse arguments: %s", err)
+	if c.OnlyCheck == "" {
+		rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse arguments: %s", err)
+		}
+		if len(rest) > 0 {
+			return nil, fmt.Errorf("unhandled extra arguments: %v", rest)
+		}
+	} else {
+		args := make([]string, 0)
+		// If set to just check one file add other package files in the dir with it
+		dir := filepath.Dir(c.OnlyCheck)
+		if dir == "" {
+			dir = "."
+		}
+		files, err := ioutil.ReadDir(dir)
+		if err != nil {
+			return nil, fmt.Errorf("Error reading dir '%s'. Reason: %s", dir, err)
+		}
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			if !strings.HasSuffix(file.Name(), ".go") {
+				continue
+			}
+			if c.WithoutTests && strings.HasSuffix(file.Name(), "_test.go") {
+				continue
+			}
+			args = append(args, filepath.Join(dir, file.Name()))
+		}
+		loadcfg.CreateFromFilenames("", args...)
 	}
-	if len(rest) > 0 {
-		return nil, fmt.Errorf("unhandled extra arguments: %v", rest)
-	}
-
 	return loadcfg.Load()
 }
 
@@ -190,6 +223,12 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			}
 
 			for _, astFile := range v.pkg.Files {
+				if c.OnlyCheck != "" {
+					fName := v.prog.Fset.Position(astFile.Pos()).Filename
+					if !strings.HasSuffix(fName, c.OnlyCheck) {
+						continue
+					}
+				}
 				ast.Walk(v, astFile)
 			}
 			u.Append(v.errors...)
