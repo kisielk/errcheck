@@ -110,10 +110,10 @@ type Checker struct {
 	// If true, checking of _test.go files is disabled
 	WithoutTests bool
 
-	//Only check a single file
+	// Only check a single file
 	OnlyCheck string
 
-	//Extra output (to help distinguish output from other linters)
+	// Extra output (to help distinguish output from other linters)
 	Reason string
 
 	exclude map[string]bool
