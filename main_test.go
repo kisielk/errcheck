@@ -212,10 +212,10 @@ func TestParseFlags(t *testing.T) {
 			t.Fatalf("%q: tags got %v want %v", argsStr, tags, c.tags)
 		}
 		if b := checker.Blank; b != c.blank {
-			t.Fatalf("%q: blank got %q want %q", argsStr, b, c.blank)
+			t.Fatalf("%q: blank got %v want %v", argsStr, b, c.blank)
 		}
 		if a := checker.Asserts; a != c.asserts {
-			t.Fatalf("%q: asserts got %q want %q", argsStr, a, c.asserts)
+			t.Fatalf("%q: asserts got %v want %v", argsStr, a, c.asserts)
 		}
 		if e != c.error {
 			t.Fatalf("%q: error got %q want %q", argsStr, e, c.error)
