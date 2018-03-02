@@ -127,6 +127,11 @@ func (c *Checker) SetExclude(l map[string]bool) {
 		"(*bytes.Buffer).WriteByte":   true,
 		"(*bytes.Buffer).WriteRune":   true,
 		"(*bytes.Buffer).WriteString": true,
+
+		"(*strings.Builder).Write":       true,
+		"(*strings.Builder).WriteByte":   true,
+		"(*strings.Builder).WriteRune":   true,
+		"(*strings.Builder).WriteString": true,
 	}
 	for k := range l {
 		c.exclude[k] = true
