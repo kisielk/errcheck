@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -145,6 +146,7 @@ func main() {
 	b2.Write(nil)
 	rand.Read(nil)
 	mrand.Read(nil)
+	sha256.New().Write([]byte{})
 
 	ioutil.ReadFile("main.go") // UNCHECKED
 

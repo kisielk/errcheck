@@ -143,12 +143,11 @@ func (c *Checker) SetExclude(l map[string]bool) {
 		"(*strings.Builder).WriteByte",
 		"(*strings.Builder).WriteRune",
 		"(*strings.Builder).WriteString",
+
+		// hash
+		"(hash.Hash).Write",
 	} {
 		c.exclude[exc] = true
-	}
-
-	for k := range l {
-		c.exclude[k] = true
 	}
 }
 
@@ -295,13 +294,11 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	for i, t := range ts {
 		result[i] = fmt.Sprintf("(%s).%s", t.String(), fn.Name())
 	}
-	fmt.Printf("%v\n", ts)
 	return result
 }
 
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
 	for _, name := range v.namesForExcludeCheck(call) {
-		fmt.Printf("%v\n", name)
 		if v.exclude[name] {
 			return true
 		}
