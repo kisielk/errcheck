@@ -236,23 +236,24 @@ type visitor struct {
 	errors []UncheckedError
 }
 
-func (v *visitor) getReceiverTypeAndFunc(call *ast.CallExpr) (types.Type, *types.Func, bool) {
+func (v *visitor) selectorAndFunc(call *ast.CallExpr) (*ast.SelectorExpr, *types.Func, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return nil, nil, false
 	}
-	t := v.pkg.TypeOf(sel.X)
+
 	fn, ok := v.pkg.ObjectOf(sel.Sel).(*types.Func)
 	if !ok {
 		// Shouldn't happen, but be paranoid
 		return nil, nil, false
 	}
 
-	return t, fn, true
+	return sel, fn, true
+
 }
 
 func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
-	_, fn, ok := v.getReceiverTypeAndFunc(call)
+	_, fn, ok := v.selectorAndFunc(call)
 	if !ok {
 		return "", false
 	}
@@ -267,40 +268,40 @@ func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
 	return fn.FullName(), true
 }
 
-// fullNameWithReceiversType returns the full name of a function call, but taking
-// into account embedded structs, unlike the plain fullName function above.
-//
-// For example, a struct defined like:
-//
-//    type WriterWrapper {
-//      io.Writer
-//    }
-//
-// fullName(WriterWrapper{}.Write) would return "(io.Writer).Write",
-// but fullNameWithReceiversType would return "(WriterWrapper).Write".
-func (v *visitor) fullNameWithReceiversType(call *ast.CallExpr) (string, bool) {
-	t, fn, ok := v.getReceiverTypeAndFunc(call)
+func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
+	sel, fn, ok := v.selectorAndFunc(call)
 	if !ok {
-		return "", false
+		return nil
 	}
 
-	if t == types.Typ[types.Invalid] {
-		return "", false
+	name, ok := v.fullName(call)
+	if !ok {
+		return nil
 	}
 
-	// The name is fully qualified by the import path, possible type,
-	// function/method name and pointer receiver.
-	return fmt.Sprintf("(%s).%s", t.String(), fn.Name()), true
+	// This will have ok false for functions without a receiver type,
+	// so just return the functions full name.
+	selection, ok := v.pkg.Selections[sel]
+	if !ok {
+		return []string{name}
+	}
+
+	ts, ok := walkThroughEmbeddedInterfaces(selection)
+	if !ok {
+		return []string{name}
+	}
+
+	result := make([]string, len(ts))
+	for i, t := range ts {
+		result[i] = fmt.Sprintf("(%s).%s", t.String(), fn.Name())
+	}
+	fmt.Printf("%v\n", ts)
+	return result
 }
 
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
-	if name, ok := v.fullName(call); ok {
-		if v.exclude[name] {
-			return true
-		}
-	}
-
-	if name, ok := v.fullNameWithReceiversType(call); ok {
+	for _, name := range v.namesForExcludeCheck(call) {
+		fmt.Printf("%v\n", name)
 		if v.exclude[name] {
 			return true
 		}

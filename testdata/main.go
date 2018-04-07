@@ -66,12 +66,12 @@ func customPointerErrorTuple() (int, *MyPointerError) {
 }
 
 // Test custom excludes
-type ErrorMaker struct{}
-
-func (ErrorMaker) MakeNilError() error        { return nil }
-func (ErrorMaker) MakeAnotherNilError() error { return nil }
-
-type ErrorMakerWrapper struct{ ErrorMaker }
+type ErrorMakerInterface interface {
+	MakeNilError() error
+}
+type ErrorMakerInterfaceWrapper interface {
+	ErrorMakerInterface
+}
 
 func main() {
 	// Single error return
@@ -148,15 +148,6 @@ func main() {
 
 	ioutil.ReadFile("main.go") // UNCHECKED
 
-	// We exclude (ErrorMakerWrapper).MakeNilError, but not
-	// (ErrorMaker).MakeNilError itself.
-	//
-	// We do exclude MakeAnotherNilError itself.
-	em := ErrorMaker{}
-	em.MakeNilError() // UNCHECKED
-	em.MakeAnotherNilError()
-	wem := ErrorMakerWrapper{ErrorMaker{}}
-	wem.MakeNilError()
-	(&wem).MakeNilError()
-	wem.MakeAnotherNilError()
+	var emiw ErrorMakerInterfaceWrapper
+	emiw.MakeNilError()
 }

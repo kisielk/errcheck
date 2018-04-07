@@ -188,9 +188,7 @@ func test(t *testing.T, f flags) {
 	checker.Asserts = asserts
 	checker.Blank = blank
 	checker.SetExclude(map[string]bool{
-		fmt.Sprintf("(%s.ErrorMakerWrapper).MakeNilError", testPackage):  true,
-		fmt.Sprintf("(*%s.ErrorMakerWrapper).MakeNilError", testPackage): true,
-		fmt.Sprintf("(%s.ErrorMaker).MakeAnotherNilError", testPackage):  true,
+		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage): true,
 	})
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
