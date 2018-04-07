@@ -236,16 +236,27 @@ type visitor struct {
 	errors []UncheckedError
 }
 
-func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
+func (v *visitor) getReceiverTypeAndFunc(call *ast.CallExpr) (types.Type, *types.Func, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return "", false
+		return nil, nil, false
 	}
+	t := v.pkg.TypeOf(sel.X)
 	fn, ok := v.pkg.ObjectOf(sel.Sel).(*types.Func)
 	if !ok {
 		// Shouldn't happen, but be paranoid
+		return nil, nil, false
+	}
+
+	return t, fn, true
+}
+
+func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
+	_, fn, ok := v.getReceiverTypeAndFunc(call)
+	if !ok {
 		return "", false
 	}
+
 	// The name is fully qualified by the import path, possible type,
 	// function/method name and pointer receiver.
 	//
@@ -256,9 +267,43 @@ func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
 	return fn.FullName(), true
 }
 
+// fullNameWithReceiversType returns the full name of a function call, but taking
+// into account embedded structs, unlike the plain fullName function above.
+//
+// For example, a struct defined like:
+//
+//    type WriterWrapper {
+//      io.Writer
+//    }
+//
+// fullName(WriterWrapper{}.Write) would return "(io.Writer).Write",
+// but fullNameWithReceiversType would return "(WriterWrapper).Write".
+func (v *visitor) fullNameWithReceiversType(call *ast.CallExpr) (string, bool) {
+	t, fn, ok := v.getReceiverTypeAndFunc(call)
+	if !ok {
+		return "", false
+	}
+
+	if t == types.Typ[types.Invalid] {
+		return "", false
+	}
+
+	// The name is fully qualified by the import path, possible type,
+	// function/method name and pointer receiver.
+	return fmt.Sprintf("(%s).%s", t.String(), fn.Name()), true
+}
+
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
 	if name, ok := v.fullName(call); ok {
-		return v.exclude[name]
+		if v.exclude[name] {
+			return true
+		}
+	}
+
+	if name, ok := v.fullNameWithReceiversType(call); ok {
+		if v.exclude[name] {
+			return true
+		}
 	}
 
 	return false
