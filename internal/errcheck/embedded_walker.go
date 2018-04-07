@@ -6,7 +6,8 @@ import (
 )
 
 // walkThroughEmbeddedInterfaces returns a slice of types that we need to walk through
-// in order to reach the actual interface definition of the function on the other end of this selection (x.f)
+// in order to reach the actual definition, in an interface, of the function on
+// the other end of this selection (x.f)
 //
 // False will be returned it:
 //   - the left side of the selection is not a function
@@ -48,10 +49,10 @@ func walkThroughEmbeddedInterfaces(sel *types.Selection) ([]types.Type, bool) {
 	// Now currentT is either a Struct implementing the
 	// actual function or an interface. If it's an interface,
 	// we need to continue digging until we find the interface
-	// that actually explicitly defines the function!
+	// that actually explicitly defines the function.
 	//
-	// If it's a Struct, we return false; we're only interested in interface-defined
-	// functions here.
+	// If it's a Struct, we return false, as we're only interested
+	// in interface-defined functions in this function.
 	_, ok = maybeUnname(currentT).(*types.Interface)
 	if !ok {
 		return nil, false
