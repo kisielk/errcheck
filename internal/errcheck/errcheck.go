@@ -256,7 +256,6 @@ func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
 	if !ok {
 		return "", false
 	}
-
 	// The name is fully qualified by the import path, possible type,
 	// function/method name and pointer receiver.
 	//
@@ -278,13 +277,15 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 		return nil
 	}
 
-	// This will have ok false for functions without a receiver type,
-	// so just return the functions full name.
+	// This will be missing for functions without a receiver (like fmt.Printf),
+	// so just fall back to the the function's fullName in that case.
 	selection, ok := v.pkg.Selections[sel]
 	if !ok {
 		return []string{name}
 	}
 
+	// This will return with ok false if the function isn't defined
+	// on an interface, so just fall back to the fullName.
 	ts, ok := walkThroughEmbeddedInterfaces(selection)
 	if !ok {
 		return []string{name}

@@ -40,7 +40,7 @@ func TestWalkThroughEmbeddedInterfaces(t *testing.T) {
 		testCase{"Outer{}.Method", false, nil},
 		testCase{"InnerInterface.Method", true, []string{"test.InnerInterface"}},
 		testCase{"OuterInterface.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
-		testCase{"OuterInterfaceStruct.Method", true, []string{"test.OuterInterfaceStruct", "test.MiddleInterfaceStruct", "test.OuterInterface", "test.InnerInterface"}},
+		testCase{"OuterInterfaceStruct.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
 	}
 
 	for _, c := range cases {

@@ -1,88 +1,112 @@
 package errcheck
 
 import (
-	// "fmt"
+	"fmt"
 	"go/types"
 )
 
-// walkThroughEmbeddedInterfaces returns a slice of types that we need to walk through
-// in order to reach the actual definition, in an interface, of the function on
-// the other end of this selection (x.f)
+// walkThroughEmbeddedInterfaces returns a slice of Interfaces that
+// we need to walk through in order to reach the actual definition,
+// in an Interface, of the method selected by the given selection.
 //
-// False will be returned it:
-//   - the left side of the selection is not a function
-//   - the right side of the selection is an invalid type
-//   - we don't end at an interface-defined function
+// false will be returned in the second return value if:
+//   - the right side of the selection is not a function
+//   - the actual definition of the function is not in an Interface
 //
+// The returned slice will contain all the interface types that need
+// to be walked through to reach the actual definition.
+//
+// For example, say we have:
+//
+//    type Inner interface {Method()}
+//    type Middle interface {Inner}
+//    type Outer interface {Middle}
+//    type T struct {Outer}
+//    type U struct {T}
+//    type V struct {U}
+//
+// And then the selector:
+//
+//    V.Method
+//
+// We'll return [Outer, Middle, Inner] by first walking through the embedded structs
+// until we reach the Outer interface, then descending through the embedded interfaces
+// until we find the one that actually explicitly defines Method.
 func walkThroughEmbeddedInterfaces(sel *types.Selection) ([]types.Type, bool) {
 	fn, ok := sel.Obj().(*types.Func)
 	if !ok {
 		return nil, false
 	}
 
+	// Start off at the receiver.
 	currentT := sel.Recv()
-	if currentT == types.Typ[types.Invalid] {
-		return nil, false
-	}
-
-	// The first type is the immediate receiver itself
-	result := []types.Type{currentT}
 
 	// First, we can walk through any Struct fields provided
-	// by the selection Index() method.
+	// by the selection Index() method. We ignore the last
+	// index because it would give the method itself.
 	indexes := sel.Index()
 	for _, fieldIndex := range indexes[:len(indexes)-1] {
-		currentT = maybeUnname(maybeDereference(currentT))
-
-		// Because we have an entry in Index for this type,
-		// we know it has to be a Struct.
-		s, ok := currentT.(*types.Struct)
-		if !ok {
-			panic("expected Struct!")
-		}
-
-		nextT := s.Field(fieldIndex).Type()
-		result = append(result, nextT)
-		currentT = nextT
+		currentT = getTypeAtFieldIndex(currentT, fieldIndex)
 	}
 
-	// Now currentT is either a Struct implementing the
-	// actual function or an interface. If it's an interface,
-	// we need to continue digging until we find the interface
-	// that actually explicitly defines the function.
+	// Now currentT is either a type implementing the actual function,
+	// an Invalid type (if the receiver is a package), or an interface.
 	//
-	// If it's a Struct, we return false, as we're only interested
-	// in interface-defined functions in this function.
-	_, ok = maybeUnname(currentT).(*types.Interface)
+	// If it's not an Interface, then we're done, as this function
+	// only cares about Interface-defined functions.
+	//
+	// If it is an Interface, we potentially need to continue digging until
+	// we find the Interface that actually explicitly defines the function.
+	interfaceT, ok := maybeUnname(currentT).(*types.Interface)
 	if !ok {
 		return nil, false
 	}
 
-	for {
-		interfaceT := maybeUnname(currentT).(*types.Interface)
-		if explicitlyDefinesMethod(interfaceT, fn) {
-			// then we're done
-			break
-		}
+	// The first interface we pass through is this one we've found. We return the possibly
+	// wrapping types.Named because it is more useful to work with for callers.
+	result := []types.Type{currentT}
 
-		// otherwise, search through the embedded interfaces to find
-		// the one that defines this method.
-		for i := 0; i < interfaceT.NumEmbeddeds(); i++ {
-			nextNamedInterface := interfaceT.Embedded(i)
-			if definesMethod(maybeUnname(nextNamedInterface).(*types.Interface), fn) {
-				result = append(result, nextNamedInterface)
-				currentT = nextNamedInterface
-				break
-			}
+	// If this interface itself explicitly defines the given method
+	// then we're done digging.
+	for !explicitlyDefinesMethod(interfaceT, fn) {
+		// Otherwise, we find which of the embedded interfaces _does_
+		// define the method, add it to our list, and loop.
+		namedInterfaceT, ok := getEmbeddedInterfaceDefiningMethod(interfaceT, fn)
+		if !ok {
+			// This should be impossible as long as we type-checked: either the
+			// interface or one of its embedded ones must implement the method...
+			panic(fmt.Sprintf("either %v or one of its embedded interfaces must implement %v", currentT, fn))
 		}
+		result = append(result, namedInterfaceT)
+		interfaceT = namedInterfaceT.Underlying().(*types.Interface)
 	}
 
 	return result, true
 }
 
+func getTypeAtFieldIndex(startingAt types.Type, fieldIndex int) types.Type {
+	t := maybeUnname(maybeDereference(startingAt))
+	s, ok := t.(*types.Struct)
+	if !ok {
+		panic(fmt.Sprintf("cannot get Field of a type that is not a struct, got a %T", t))
+	}
+
+	return s.Field(fieldIndex).Type()
+}
+
+func getEmbeddedInterfaceDefiningMethod(interfaceT *types.Interface, fn *types.Func) (*types.Named, bool) {
+	for i := 0; i < interfaceT.NumEmbeddeds(); i++ {
+		embedded := interfaceT.Embedded(i)
+		if definesMethod(embedded.Underlying().(*types.Interface), fn) {
+			return embedded, true
+		}
+	}
+	return nil, false
+}
+
 func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	for i := 0; i < interfaceT.NumExplicitMethods(); i++ {
-		if interfaceT.ExplicitMethod(i).Id() == fn.Id() {
+		if interfaceT.ExplicitMethod(i) == fn {
 			return true
 		}
 	}
@@ -91,7 +115,7 @@ func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 
 func definesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	for i := 0; i < interfaceT.NumMethods(); i++ {
-		if interfaceT.Method(i).Id() == fn.Id() {
+		if interfaceT.Method(i) == fn {
 			return true
 		}
 	}
