@@ -9,17 +9,17 @@ import (
 )
 
 func a() error {
-	fmt.Println("this function returns an error") // UNCHECKED
+	fmt.Println("this function returns an error") // EXCLUDED
 	return nil
 }
 
 func b() (int, error) {
-	fmt.Println("this function returns an int and an error") // UNCHECKED
+	fmt.Println("this function returns an int and an error") // EXCLUDED
 	return 0, nil
 }
 
 func c() int {
-	fmt.Println("this function returns an int") // UNCHECKED
+	fmt.Println("this function returns an int") // EXCLUDED
 	return 7
 }
 
