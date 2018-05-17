@@ -118,21 +118,35 @@ func NewChecker() *Checker {
 }
 
 func (c *Checker) SetExclude(l map[string]bool) {
+	c.exclude = map[string]bool{}
+
 	// Default exclude for stdlib functions
-	c.exclude = map[string]bool{
-		"math/rand.Read":         true,
-		"(*math/rand.Rand).Read": true,
+	for _, exc := range []string{
+		// bytes
+		"(*bytes.Buffer).Write",
+		"(*bytes.Buffer).WriteByte",
+		"(*bytes.Buffer).WriteRune",
+		"(*bytes.Buffer).WriteString",
 
-		"(*bytes.Buffer).Write":       true,
-		"(*bytes.Buffer).WriteByte":   true,
-		"(*bytes.Buffer).WriteRune":   true,
-		"(*bytes.Buffer).WriteString": true,
+		// fmt
+		"fmt.Errorf",
+		"fmt.Print",
+		"fmt.Printf",
+		"fmt.Println",
 
-		"(*strings.Builder).Write":       true,
-		"(*strings.Builder).WriteByte":   true,
-		"(*strings.Builder).WriteRune":   true,
-		"(*strings.Builder).WriteString": true,
+		// math/rand
+		"math/rand.Read",
+		"(*math/rand.Rand).Read",
+
+		// strings
+		"(*strings.Builder).Write",
+		"(*strings.Builder).WriteByte",
+		"(*strings.Builder).WriteRune",
+		"(*strings.Builder).WriteString",
+	} {
+		c.exclude[exc] = true
 	}
+
 	for k := range l {
 		c.exclude[k] = true
 	}

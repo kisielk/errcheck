@@ -140,9 +140,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	tags := tagsFlag{}
 	flags.Var(&tags, "tags", "space-separated list of build tags to include")
 	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
-	ignore := ignoreFlag(map[string]*regexp.Regexp{
-		"fmt": dotStar,
-	})
+	ignore := ignoreFlag(map[string]*regexp.Regexp{})
 	flags.Var(ignore, "ignore", "[deprecated] comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg.")
 

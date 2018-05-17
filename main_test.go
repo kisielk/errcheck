@@ -75,7 +75,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -84,7 +84,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-blank", "-asserts"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{},
 			blank:   true,
 			asserts: true,
@@ -93,7 +93,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "foo", "bar"},
 			paths:   []string{"foo", "bar"},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -102,7 +102,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String(), "encoding/binary": dotStar.String()},
+			ignore:  map[string]string{"fmt": ".*", "encoding/binary": dotStar.String()},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -120,7 +120,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String(), "": "[rR]ead|[wW]rite"},
+			ignore:  map[string]string{"": "[rR]ead|[wW]rite"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -129,7 +129,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String(), "testing": dotStar.String()},
+			ignore:  map[string]string{"testing": dotStar.String()},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -138,7 +138,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String(), "testing": dotStar.String(), "foo": dotStar.String()},
+			ignore:  map[string]string{"testing": dotStar.String(), "foo": dotStar.String()},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -147,7 +147,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{"foo"},
 			blank:   false,
 			asserts: false,
@@ -156,7 +156,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo bar !baz"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -165,7 +165,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": dotStar.String()},
+			ignore:  map[string]string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -203,22 +203,22 @@ func TestParseFlags(t *testing.T) {
 
 		argsStr := strings.Join(c.args, " ")
 		if !slicesEqual(p, c.paths) {
-			t.Fatalf("%q: path got %q want %q", argsStr, p, c.paths)
+			t.Errorf("%q: path got %q want %q", argsStr, p, c.paths)
 		}
 		if ign := checker.Ignore; !ignoresEqual(ign, c.ignore) {
-			t.Fatalf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
+			t.Errorf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
 		}
 		if tags := checker.Tags; !slicesEqual(tags, c.tags) {
-			t.Fatalf("%q: tags got %v want %v", argsStr, tags, c.tags)
+			t.Errorf("%q: tags got %v want %v", argsStr, tags, c.tags)
 		}
 		if b := checker.Blank; b != c.blank {
-			t.Fatalf("%q: blank got %v want %v", argsStr, b, c.blank)
+			t.Errorf("%q: blank got %v want %v", argsStr, b, c.blank)
 		}
 		if a := checker.Asserts; a != c.asserts {
-			t.Fatalf("%q: asserts got %v want %v", argsStr, a, c.asserts)
+			t.Errorf("%q: asserts got %v want %v", argsStr, a, c.asserts)
 		}
 		if e != c.error {
-			t.Fatalf("%q: error got %q want %q", argsStr, e, c.error)
+			t.Errorf("%q: error got %q want %q", argsStr, e, c.error)
 		}
 	}
 }
