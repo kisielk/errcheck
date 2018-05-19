@@ -94,6 +94,11 @@ func getTypeAtFieldIndex(startingAt types.Type, fieldIndex int) types.Type {
 	return s.Field(fieldIndex).Type()
 }
 
+// getEmbeddedInterfaceDefiningMethod searches through any embedded interfaces of the
+// passed interface searching for one that defines the given function. If found, the
+// types.Named wrapping that interface will be returned along with true in the second value.
+//
+// If no such embedded interface is found, nil and false are returned.
 func getEmbeddedInterfaceDefiningMethod(interfaceT *types.Interface, fn *types.Func) (*types.Named, bool) {
 	for i := 0; i < interfaceT.NumEmbeddeds(); i++ {
 		embedded := interfaceT.Embedded(i)
