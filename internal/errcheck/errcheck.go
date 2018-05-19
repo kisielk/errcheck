@@ -149,6 +149,10 @@ func (c *Checker) SetExclude(l map[string]bool) {
 	} {
 		c.exclude[exc] = true
 	}
+
+	for k := range l {
+		c.exclude[k] = true
+	}
 }
 
 func (c *Checker) logf(msg string, args ...interface{}) {
