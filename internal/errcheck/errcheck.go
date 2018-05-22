@@ -143,6 +143,9 @@ func (c *Checker) SetExclude(l map[string]bool) {
 		"(*strings.Builder).WriteByte",
 		"(*strings.Builder).WriteRune",
 		"(*strings.Builder).WriteString",
+
+		// hash
+		"(hash.Hash).Write",
 	} {
 		c.exclude[exc] = true
 	}
@@ -236,29 +239,105 @@ type visitor struct {
 	errors []UncheckedError
 }
 
-func (v *visitor) fullName(call *ast.CallExpr) (string, bool) {
+// selectorAndFunc tries to get the selector and function from call expression.
+// For example, given the call expression representing "a.b()", the selector
+// is "a.b" and the function is "b" itself.
+//
+// The final return value will be true if it is able to do extract a selector
+// from the call and look up the function object it refers to.
+//
+// If the call does not include a selector (like if it is a plain "f()" function call)
+// then the final return value will be false.
+func (v *visitor) selectorAndFunc(call *ast.CallExpr) (*ast.SelectorExpr, *types.Func, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return "", false
+		return nil, nil, false
 	}
+
 	fn, ok := v.pkg.ObjectOf(sel.Sel).(*types.Func)
 	if !ok {
 		// Shouldn't happen, but be paranoid
-		return "", false
+		return nil, nil, false
 	}
-	// The name is fully qualified by the import path, possible type,
-	// function/method name and pointer receiver.
-	//
+
+	return sel, fn, true
+
+}
+
+// fullName will return a package / receiver-type qualified name for a called function
+// if the function is the result of a selector. Otherwise it will return
+// the empty string.
+//
+// The name is fully qualified by the import path, possible type,
+// function/method name and pointer receiver.
+//
+// For example,
+//   - for "fmt.Printf(...)" it will return "fmt.Printf"
+//   - for "base64.StdEncoding.Decode(...)" it will return "(*encoding/base64.Encoding).Decode"
+//   - for "myFunc()" it will return ""
+func (v *visitor) fullName(call *ast.CallExpr) string {
+	_, fn, ok := v.selectorAndFunc(call)
+	if !ok {
+		return ""
+	}
+
 	// TODO(dh): vendored packages will have /vendor/ in their name,
 	// thus not matching vendored standard library packages. If we
 	// want to support vendored stdlib packages, we need to implement
 	// FullName with our own logic.
-	return fn.FullName(), true
+	return fn.FullName()
+}
+
+// namesForExcludeCheck will return a list of fully-qualified function names
+// from a function call that can be used to check against the exclusion list.
+//
+// If a function call is against a local function (like "myFunc()") then no
+// names are returned. If the function is package-qualified (like "fmt.Printf()")
+// then just that function's fullName is returned.
+//
+// Otherwise, we walk through all the potentially embeddded interfaces of the receiver
+// the collect a list of type-qualified function names that we will check.
+func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
+	sel, fn, ok := v.selectorAndFunc(call)
+	if !ok {
+		return nil
+	}
+
+	name := v.fullName(call)
+	if name == "" {
+		return nil
+	}
+
+	// This will be missing for functions without a receiver (like fmt.Printf),
+	// so just fall back to the the function's fullName in that case.
+	selection, ok := v.pkg.Selections[sel]
+	if !ok {
+		return []string{name}
+	}
+
+	// This will return with ok false if the function isn't defined
+	// on an interface, so just fall back to the fullName.
+	ts, ok := walkThroughEmbeddedInterfaces(selection)
+	if !ok {
+		return []string{name}
+	}
+
+	result := make([]string, len(ts))
+	for i, t := range ts {
+		// Like in fullName, vendored packages will have /vendor/ in their name,
+		// thus not matching vendored standard library packages. If we
+		// want to support vendored stdlib packages, we need to implement
+		// additional logic here.
+		result[i] = fmt.Sprintf("(%s).%s", t.String(), fn.Name())
+	}
+	return result
 }
 
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
-	if name, ok := v.fullName(call); ok {
-		return v.exclude[name]
+	for _, name := range v.namesForExcludeCheck(call) {
+		if v.exclude[name] {
+			return true
+		}
 	}
 
 	return false
@@ -390,7 +469,7 @@ func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 
 	var name string
 	if call != nil {
-		name, _ = v.fullName(call)
+		name = v.fullName(call)
 	}
 
 	v.errors = append(v.errors, UncheckedError{pos, line, name})
