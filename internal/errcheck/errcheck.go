@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"golang.org/x/tools/go/loader"
+	"go/parser"
 )
 
 var errorType *types.Interface
@@ -108,6 +109,9 @@ type Checker struct {
 	// If true, checking of _test.go files is disabled
 	WithoutTests bool
 
+	// If true, checking of files with generated code is disabled
+	WithoutGeneratedCode bool
+
 	exclude map[string]bool
 }
 
@@ -169,6 +173,11 @@ func (c *Checker) load(paths ...string) (*loader.Program, error) {
 	loadcfg := loader.Config{
 		Build: &ctx,
 	}
+
+	if c.WithoutGeneratedCode {
+		loadcfg.ParserMode = parser.ParseComments
+	}
+
 	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse arguments: %s", err)
@@ -186,6 +195,8 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	if err != nil {
 		return fmt.Errorf("could not type check: %s", err)
 	}
+
+	re := regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
 
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
@@ -211,7 +222,25 @@ func (c *Checker) CheckPackages(paths ...string) error {
 				errors:  []UncheckedError{},
 			}
 
+			PKG_FILE:
 			for _, astFile := range v.pkg.Files {
+				if (c.WithoutGeneratedCode) {
+					c.logf("+++++++++++++++++++++++++++++++++\n")
+					for _, cg := range astFile.Comments {
+						c.logf("---------------------------------\n")
+						c.logf("Position %v\n", cg.Pos())
+						for _, comment := range cg.List {
+							c.logf("...............\n")
+							c.logf("%v\n", comment.Text)
+							c.logf("...............\n")
+							if (re.MatchString(comment.Text)) {
+								continue PKG_FILE
+							}
+						}
+						c.logf("---------------------------------")
+					}
+					c.logf("+++++++++++++++++++++++++++++++++")
+				}
 				ast.Walk(v, astFile)
 			}
 			u.Append(v.errors...)
@@ -225,6 +254,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	}
 	return nil
 }
+
 
 // visitor implements the errcheck algorithm
 type visitor struct {
