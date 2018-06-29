@@ -221,17 +221,17 @@ func TestWithoutGeneratedCode(t *testing.T) {
 
 	cases := []struct {
 		withoutGeneratedCode bool
-		numExpectedErrs int
+		numExpectedErrs      int
 	}{
 		// basic case has one error
 		{
 			withoutGeneratedCode: false,
-			numExpectedErrs: 1,
+			numExpectedErrs:      1,
 		},
 		// ignoring vendored import works
 		{
 			withoutGeneratedCode: true,
-			numExpectedErrs: 0,
+			numExpectedErrs:      0,
 		},
 	}
 
