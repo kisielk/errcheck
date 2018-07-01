@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"go/parser"
 	"golang.org/x/tools/go/loader"
 )
 
@@ -108,6 +109,9 @@ type Checker struct {
 	// If true, checking of _test.go files is disabled
 	WithoutTests bool
 
+	// If true, checking of files with generated code is disabled
+	WithoutGeneratedCode bool
+
 	exclude map[string]bool
 }
 
@@ -169,6 +173,11 @@ func (c *Checker) load(paths ...string) (*loader.Program, error) {
 	loadcfg := loader.Config{
 		Build: &ctx,
 	}
+
+	if c.WithoutGeneratedCode {
+		loadcfg.ParserMode = parser.ParseComments
+	}
+
 	rest, err := loadcfg.FromArgs(paths, !c.WithoutTests)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse arguments: %s", err)
@@ -178,6 +187,24 @@ func (c *Checker) load(paths ...string) (*loader.Program, error) {
 	}
 
 	return loadcfg.Load()
+}
+
+var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
+
+func (c *Checker) shouldSkipFile(file *ast.File) bool {
+	if !c.WithoutGeneratedCode {
+		return false
+	}
+
+	for _, cg := range file.Comments {
+		for _, comment := range cg.List {
+			if generatedCodeRegexp.MatchString(comment.Text) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // CheckPackages checks packages for errors.
@@ -212,6 +239,9 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			}
 
 			for _, astFile := range v.pkg.Files {
+				if c.shouldSkipFile(astFile) {
+					continue
+				}
 				ast.Walk(v, astFile)
 			}
 			u.Append(v.errors...)
