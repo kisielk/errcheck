@@ -134,6 +134,9 @@ func (c *Checker) SetExclude(l map[string]bool) {
 
 		// fmt
 		"fmt.Errorf",
+		"fmt.Fprint",
+		"fmt.Fprintf",
+		"fmt.Fprintln",
 		"fmt.Print",
 		"fmt.Printf",
 		"fmt.Println",
