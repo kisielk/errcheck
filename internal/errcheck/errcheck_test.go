@@ -40,7 +40,8 @@ func init() {
 	assertMarkers = make(map[marker]bool)
 
 	cfg := &packages.Config{
-		Mode: packages.LoadSyntax,
+		Mode:  packages.LoadSyntax,
+		Tests: true,
 	}
 	pkgs, err := packages.Load(cfg, testPackage)
 	if err != nil {
@@ -93,14 +94,14 @@ func TestWhitelist(t *testing.T) {
 
 func TestIgnore(t *testing.T) {
 	const testVendorMain = `
-package main
+	package main
 
-import "github.com/testlog"
+	import "github.com/testlog"
 
-func main() {
-	// returns an error that is not checked
-	testlog.Info()
-}`
+	func main() {
+		// returns an error that is not checked
+		testlog.Info()
+	}`
 	const testLog = `
 	package testlog
 
@@ -162,14 +163,12 @@ func main() {
 	for i, currCase := range cases {
 		checker := NewChecker()
 		checker.Ignore = currCase.ignore
-
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(), "GOPATH="+tmpGopath)
 			cfg.Dir = testVendorDir
 			pkgs, err := packages.Load(cfg, paths...)
 			return pkgs, err
 		}
-
 		err := checker.CheckPackages("github.com/testvendor")
 
 		if currCase.numExpectedErrs == 0 {
