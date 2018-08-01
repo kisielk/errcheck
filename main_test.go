@@ -40,7 +40,7 @@ func TestMain(t *testing.T) {
 		bufChannel <- buf.String()
 	}()
 
-	exitCode := mainCmd([]string{"cmd name", "github.com/kisielk/errcheck/testdata"})
+	exitCode := mainCmd([]string{"cmd name", "-ignoretests", "github.com/kisielk/errcheck/testdata"})
 
 	w.Close()
 

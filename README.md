@@ -94,14 +94,7 @@ no arguments.
 
 ## Cgo
 
-Currently errcheck is unable to check packages that `import "C"` due to limitations
-in the importer.
-
-However, you can use errcheck on packages that depend on those which use cgo. In
-order for this to work you need to `go install` the cgo dependencies before running
-errcheck on the dependent packages.
-
-See https://github.com/kisielk/errcheck/issues/16 for more details.
+Currently errcheck does not fully support type checking for packages that use cgo when used with versions of Go earlier than Go 1.11.
 
 ## Exit Codes
 
