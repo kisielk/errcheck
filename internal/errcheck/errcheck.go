@@ -173,6 +173,7 @@ func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 		Mode:  packages.LoadAllSyntax,
 		Tests: !c.WithoutTests,
 		Flags: []string{fmt.Sprintf("-tags=%s", strings.Join(c.Tags, " "))},
+		Error: func(error) {}, // don't print type check errors
 	}
 	return loadPackages(cfg, paths...)
 }
@@ -199,7 +200,13 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 func (c *Checker) CheckPackages(paths ...string) error {
 	pkgs, err := c.load(paths...)
 	if err != nil {
-		return fmt.Errorf("could not type check: %s", err)
+		return err
+	}
+	// Check for type check errors in the initial packages.
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return fmt.Errorf("errors while type checking package %s: %v", pkg.ID, pkg.Errors)
+		}
 	}
 
 	var wg sync.WaitGroup

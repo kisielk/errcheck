@@ -42,6 +42,7 @@ func init() {
 	cfg := &packages.Config{
 		Mode:  packages.LoadSyntax,
 		Tests: true,
+		Error: func(error) {}, // don't print type check errors
 	}
 	pkgs, err := packages.Load(cfg, testPackage)
 	if err != nil {
@@ -180,7 +181,7 @@ func TestIgnore(t *testing.T) {
 
 		uerr, ok := err.(*UncheckedErrors)
 		if !ok {
-			t.Errorf("Case %d: wrong error type returned", i)
+			t.Errorf("Case %d: wrong error type returned: %v", i, err)
 			continue
 		}
 
@@ -272,7 +273,7 @@ func TestWithoutGeneratedCode(t *testing.T) {
 
 		uerr, ok := err.(*UncheckedErrors)
 		if !ok {
-			t.Errorf("Case %d: wrong error type returned", i)
+			t.Errorf("Case %d: wrong error type returned: %v", i, err)
 			continue
 		}
 
@@ -296,7 +297,7 @@ func test(t *testing.T, f flags) {
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {
-		t.Fatal("wrong error type returned")
+		t.Fatalf("wrong error type returned: %v", err)
 	}
 
 	numErrors := len(uncheckedMarkers)
