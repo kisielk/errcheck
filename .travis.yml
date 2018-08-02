@@ -3,6 +3,8 @@ sudo: false
 
 matrix:
   include:
+    - go: "1.7"
+    - go: "1.8"
     - go: "1.9"
     - go: "1.10"
     - go: "tip"
