@@ -202,10 +202,10 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	if err != nil {
 		return err
 	}
-	// Check for type check errors in the initial packages.
+	// Check for errors in the initial packages.
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
-			return fmt.Errorf("errors while type checking package %s: %v", pkg.ID, pkg.Errors)
+			return fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
 		}
 	}
 
