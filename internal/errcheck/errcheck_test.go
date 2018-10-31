@@ -2,9 +2,6 @@ package errcheck
 
 import (
 	"fmt"
-	"go/build"
-	"go/parser"
-	"go/token"
 	"io/ioutil"
 	"os"
 	"path"
@@ -12,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 const testPackage = "github.com/kisielk/errcheck/testdata"
@@ -40,28 +39,29 @@ func init() {
 	blankMarkers = make(map[marker]bool)
 	assertMarkers = make(map[marker]bool)
 
-	pkg, err := build.Import(testPackage, "", 0)
+	cfg := &packages.Config{
+		Mode:  packages.LoadSyntax,
+		Tests: true,
+		Error: func(error) {}, // don't print type check errors
+	}
+	pkgs, err := packages.Load(cfg, testPackage)
 	if err != nil {
 		panic("failed to import test package")
 	}
-	fset := token.NewFileSet()
-	astPkg, err := parser.ParseDir(fset, pkg.Dir, nil, parser.ParseComments)
-	if err != nil {
-		panic("failed to parse test package")
-	}
-
-	for _, file := range astPkg["main"].Files {
-		for _, comment := range file.Comments {
-			text := comment.Text()
-			pos := fset.Position(comment.Pos())
-			m := marker{pos.Filename, pos.Line}
-			switch text {
-			case "UNCHECKED\n":
-				uncheckedMarkers[m] = true
-			case "BLANK\n":
-				blankMarkers[m] = true
-			case "ASSERT\n":
-				assertMarkers[m] = true
+	for _, pkg := range pkgs {
+		for _, file := range pkg.Syntax {
+			for _, comment := range file.Comments {
+				text := comment.Text()
+				pos := pkg.Fset.Position(comment.Pos())
+				m := marker{pos.Filename, pos.Line}
+				switch text {
+				case "UNCHECKED\n":
+					uncheckedMarkers[m] = true
+				case "BLANK\n":
+					blankMarkers[m] = true
+				case "ASSERT\n":
+					assertMarkers[m] = true
+				}
 			}
 		}
 	}
@@ -209,12 +209,18 @@ func TestIgnore(t *testing.T) {
 		t.SkipNow()
 	}
 
-	// copy testvendor directory into current directory for test
-	testVendorDir, err := ioutil.TempDir(".", "testvendor")
+	// copy testvendor directory into directory for test
+	tmpGopath, err := ioutil.TempDir("", "testvendor")
 	if err != nil {
 		t.Fatalf("unable to create testvendor directory: %v", err)
 	}
-	defer os.RemoveAll(testVendorDir)
+	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
+	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	defer func() {
+		os.RemoveAll(tmpGopath)
+	}()
 
 	if err := ioutil.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor main: %v", err)
@@ -238,7 +244,7 @@ func TestIgnore(t *testing.T) {
 		// ignoring vendored import works
 		{
 			ignore: map[string]*regexp.Regexp{
-				path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir, "vendor/github.com/testlog"): regexp.MustCompile("Info"),
+				path.Join("github.com/testvendor/vendor/github.com/testlog"): regexp.MustCompile("Info"),
 			},
 		},
 		// non-vendored path ignores vendored import
@@ -252,7 +258,13 @@ func TestIgnore(t *testing.T) {
 	for i, currCase := range cases {
 		checker := NewChecker()
 		checker.Ignore = currCase.ignore
-		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir))
+		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+			cfg.Env = append(os.Environ(), "GOPATH="+tmpGopath)
+			cfg.Dir = testVendorDir
+			pkgs, err := packages.Load(cfg, paths...)
+			return pkgs, err
+		}
+		err := checker.CheckPackages("github.com/testvendor")
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
@@ -263,7 +275,7 @@ func TestIgnore(t *testing.T) {
 
 		uerr, ok := err.(*UncheckedErrors)
 		if !ok {
-			t.Errorf("Case %d: wrong error type returned", i)
+			t.Errorf("Case %d: wrong error type returned: %v", i, err)
 			continue
 		}
 
@@ -296,12 +308,18 @@ func TestWithoutGeneratedCode(t *testing.T) {
 		t.SkipNow()
 	}
 
-	// copy testvendor directory into current directory for test
-	testVendorDir, err := ioutil.TempDir(".", "testvendor")
+	// copy testvendor directory into directory for test
+	tmpGopath, err := ioutil.TempDir("", "testvendor")
 	if err != nil {
 		t.Fatalf("unable to create testvendor directory: %v", err)
 	}
-	defer os.RemoveAll(testVendorDir)
+	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
+	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	defer func() {
+		os.RemoveAll(tmpGopath)
+	}()
 
 	if err := ioutil.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor main: %v", err)
@@ -322,7 +340,7 @@ func TestWithoutGeneratedCode(t *testing.T) {
 			withoutGeneratedCode: false,
 			numExpectedErrs:      1,
 		},
-		// ignoring vendored import works
+		// ignoring generated code works
 		{
 			withoutGeneratedCode: true,
 			numExpectedErrs:      0,
@@ -332,7 +350,13 @@ func TestWithoutGeneratedCode(t *testing.T) {
 	for i, currCase := range cases {
 		checker := NewChecker()
 		checker.WithoutGeneratedCode = currCase.withoutGeneratedCode
-		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testVendorDir))
+		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+			cfg.Env = append(os.Environ(), "GOPATH="+tmpGopath)
+			cfg.Dir = testVendorDir
+			pkgs, err := packages.Load(cfg, paths...)
+			return pkgs, err
+		}
+		err := checker.CheckPackages(path.Join("github.com/testvendor"))
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
@@ -343,7 +367,7 @@ func TestWithoutGeneratedCode(t *testing.T) {
 
 		uerr, ok := err.(*UncheckedErrors)
 		if !ok {
-			t.Errorf("Case %d: wrong error type returned", i)
+			t.Errorf("Case %d: wrong error type returned: %v", i, err)
 			continue
 		}
 
@@ -367,7 +391,7 @@ func test(t *testing.T, f flags) {
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {
-		t.Fatal("wrong error type returned")
+		t.Fatalf("wrong error type returned: %v", err)
 	}
 
 	numErrors := len(uncheckedMarkers)
