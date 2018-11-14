@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"go/parser"
+
 	"golang.org/x/tools/go/loader"
 )
 
@@ -137,6 +138,12 @@ func (c *Checker) SetExclude(l map[string]bool) {
 		"fmt.Print",
 		"fmt.Printf",
 		"fmt.Println",
+		"fmt.Fprint(BUFFER)",
+		"fmt.Fprintf(BUFFER)",
+		"fmt.Fprintln(BUFFER)",
+		"fmt.Fprint(STDERR)",
+		"fmt.Fprintf(STDERR)",
+		"fmt.Fprintln(STDERR)",
 
 		// math/rand
 		"math/rand.Read",
@@ -363,13 +370,53 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	return result
 }
 
+// isBufferType checks if the expression type is a known in-memory buffer type.
+func (v *visitor) isBufferType(expr ast.Expr) bool {
+	t := v.pkg.Info.TypeOf(expr)
+	if t == nil {
+		return false
+	}
+	name := t.String()
+	return name == "*bytes.Buffer" || name == "*strings.Builder"
+}
+
+// isOSStderr checks the expression is literal "os.Stderr".
+func (v *visitor) isOSStderr(expr ast.Expr) bool {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	obj := v.pkg.ObjectOf(sel.Sel)
+	if obj == nil {
+		return false
+	}
+	vr, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+	return vr.Pkg() != nil && vr.Pkg().Name() == "os" && vr.Name() == "Stderr"
+}
+
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
+	buffer := false
+	stderr := false
+	if len(call.Args) > 0 && v.isBufferType(call.Args[0]) {
+		buffer = true
+	}
+	if len(call.Args) > 0 && v.isOSStderr(call.Args[0]) {
+		stderr = true
+	}
 	for _, name := range v.namesForExcludeCheck(call) {
 		if v.exclude[name] {
 			return true
 		}
+		if buffer && v.exclude[name+"(BUFFER)"] {
+			return true
+		}
+		if stderr && v.exclude[name+"(STDERR)"] {
+			return true
+		}
 	}
-
 	return false
 }
 

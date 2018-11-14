@@ -46,11 +46,16 @@ be excluded.
 
 The file should contain one function signature per line. The format for function signatures is
 `package.FunctionName` while for methods it's `(package.Receiver).MethodName` for value receivers
-and `(*package.Receiver).MethodName` for pointer receivers.
+and `(*package.Receiver).MethodName` for pointer receivers. If the function name is followed by string `(BUFFER)`, then
+the the function call is excluded only if its first argument is either `*bytes.Buffer` or `*strings.Builder`. Similarly,
+If the function name is followed by string `(STDERR)`, then
+the the function call is excluded only if its first argument is literal `os.Stderr`.
+
 
 An example of an exclude file is:
 
     io/ioutil.ReadFile
+    io.Copy(BUFFER)
     (*net/http.Client).Do
 
 The exclude list is combined with an internal list for functions in the Go standard library that
