@@ -138,12 +138,15 @@ func (c *Checker) SetExclude(l map[string]bool) {
 		"fmt.Print",
 		"fmt.Printf",
 		"fmt.Println",
-		"fmt.Fprint(BUFFER)",
-		"fmt.Fprintf(BUFFER)",
-		"fmt.Fprintln(BUFFER)",
-		"fmt.Fprint(STDERR)",
-		"fmt.Fprintf(STDERR)",
-		"fmt.Fprintln(STDERR)",
+		"fmt.Fprint(*bytes.Buffer)",
+		"fmt.Fprintf(*bytes.Buffer)",
+		"fmt.Fprintln(*bytes.Buffer)",
+		"fmt.Fprint(*strings.Builder)",
+		"fmt.Fprintf(*strings.Builder)",
+		"fmt.Fprintln(*strings.Builder)",
+		"fmt.Fprint(os.Stderr)",
+		"fmt.Fprintf(os.Stderr)",
+		"fmt.Fprintln(os.Stderr)",
 
 		// math/rand
 		"math/rand.Read",
@@ -371,49 +374,33 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 }
 
 // isBufferType checks if the expression type is a known in-memory buffer type.
-func (v *visitor) isBufferType(expr ast.Expr) bool {
+func (v *visitor) argName(expr ast.Expr) string {
+	// Special-case literal "os.Stdout" and "os.Stderr"
+	if sel, ok := expr.(*ast.SelectorExpr); ok {
+		if obj := v.pkg.ObjectOf(sel.Sel); obj != nil {
+			vr, ok := obj.(*types.Var)
+			if ok && vr.Pkg() != nil && vr.Pkg().Name() == "os" && (vr.Name() == "Stderr" || vr.Name() == "Stdout") {
+				return "os." + vr.Name()
+			}
+		}
+	}
 	t := v.pkg.Info.TypeOf(expr)
 	if t == nil {
-		return false
+		return ""
 	}
-	name := t.String()
-	return name == "*bytes.Buffer" || name == "*strings.Builder"
-}
-
-// isOSStderr checks the expression is literal "os.Stderr".
-func (v *visitor) isOSStderr(expr ast.Expr) bool {
-	sel, ok := expr.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	obj := v.pkg.ObjectOf(sel.Sel)
-	if obj == nil {
-		return false
-	}
-	vr, ok := obj.(*types.Var)
-	if !ok {
-		return false
-	}
-	return vr.Pkg() != nil && vr.Pkg().Name() == "os" && vr.Name() == "Stderr"
+	return t.String()
 }
 
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
-	buffer := false
-	stderr := false
-	if len(call.Args) > 0 && v.isBufferType(call.Args[0]) {
-		buffer = true
-	}
-	if len(call.Args) > 0 && v.isOSStderr(call.Args[0]) {
-		stderr = true
+	var arg0 string
+	if len(call.Args) > 0 {
+		arg0 = v.argName(call.Args[0])
 	}
 	for _, name := range v.namesForExcludeCheck(call) {
 		if v.exclude[name] {
 			return true
 		}
-		if buffer && v.exclude[name+"(BUFFER)"] {
-			return true
-		}
-		if stderr && v.exclude[name+"(STDERR)"] {
+		if arg0 != "" && v.exclude[name+"("+arg0+")"] {
 			return true
 		}
 	}

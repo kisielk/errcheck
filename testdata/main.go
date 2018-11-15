@@ -151,5 +151,5 @@ func main() {
 	ioutil.ReadFile("main.go") // UNCHECKED
 
 	var emiw ErrorMakerInterfaceWrapper
-	emiw.MakeNilError()
+	emiw.MakeNilError()  // UNCHECKED
 }
