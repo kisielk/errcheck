@@ -53,10 +53,21 @@ func TestMain(t *testing.T) {
 	if exitCode != exitUncheckedError {
 		t.Errorf("Exit code is %d, expected %d", exitCode, exitUncheckedError)
 	}
-
-	expectUnchecked := 16
-	if got := strings.Count(out, "UNCHECKED"); got != expectUnchecked {
-		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
+	expectUnchecked := 17
+	gotUnchecked := 0
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "UNCHECKED") {
+			t.Errorf("Unexpected output: %s", line)
+			continue
+		}
+		gotUnchecked++
+	}
+	if gotUnchecked != expectUnchecked {
+		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", gotUnchecked, expectUnchecked, out)
 	}
 }
 
