@@ -42,7 +42,6 @@ func init() {
 	cfg := &packages.Config{
 		Mode:  packages.LoadSyntax,
 		Tests: true,
-		Error: func(error) {}, // don't print type check errors
 	}
 	pkgs, err := packages.Load(cfg, testPackage)
 	if err != nil {

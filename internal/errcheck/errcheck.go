@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 
-	"go/parser"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -374,14 +373,14 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 func (v *visitor) argName(expr ast.Expr) string {
 	// Special-case literal "os.Stdout" and "os.Stderr"
 	if sel, ok := expr.(*ast.SelectorExpr); ok {
-		if obj := v.pkg.ObjectOf(sel.Sel); obj != nil {
+		if obj := v.pkg.TypesInfo.ObjectOf(sel.Sel); obj != nil {
 			vr, ok := obj.(*types.Var)
 			if ok && vr.Pkg() != nil && vr.Pkg().Name() == "os" && (vr.Name() == "Stderr" || vr.Name() == "Stdout") {
 				return "os." + vr.Name()
 			}
 		}
 	}
-	t := v.pkg.Info.TypeOf(expr)
+	t := v.pkg.TypesInfo.TypeOf(expr)
 	if t == nil {
 		return ""
 	}
