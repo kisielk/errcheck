@@ -89,6 +89,100 @@ func TestAll(t *testing.T) {
 	test(t, CheckAsserts|CheckBlank)
 }
 
+func TestBuildTags(t *testing.T) {
+	const (
+		// uses "custom1" build tag and contains 1 unchecked error
+		testBuildCustom1Tag = `
+` + `// +build custom1
+
+package custom
+
+import "fmt"
+
+func Print1() {
+	// returns an error that is not checked
+	fmt.Fprintln(nil)
+}`
+		// uses "custom2" build tag and contains 1 unchecked error
+		testBuildCustom2Tag = `
+` + `// +build custom2
+
+package custom
+
+import "fmt"
+
+func Print2() {
+	// returns an error that is not checked
+	fmt.Fprintln(nil)
+}`
+		// included so that package is not empty when built without specifying tags
+		testDoc = `
+// Package custom contains code for testing build tags.
+package custom
+`
+	)
+
+	testBuildTagsDir, err := ioutil.TempDir(".", "testbuildtags")
+	if err != nil {
+		t.Fatalf("unable to create testbuildtags directory: %v", err)
+	}
+	defer os.RemoveAll(testBuildTagsDir)
+
+	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "custom1.go"), []byte(testBuildCustom1Tag), 0644); err != nil {
+		t.Fatalf("Failed to write testbuildtags custom1: %v", err)
+	}
+	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "custom2.go"), []byte(testBuildCustom2Tag), 0644); err != nil {
+		t.Fatalf("Failed to write testbuildtags custom2: %v", err)
+	}
+	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "doc.go"), []byte(testDoc), 0644); err != nil {
+		t.Fatalf("Failed to write testbuildtags doc: %v", err)
+	}
+
+	cases := []struct {
+		tags            []string
+		numExpectedErrs int
+	}{
+		// with no tags specified, main is ignored and there are no errors
+		{
+			tags:            nil,
+			numExpectedErrs: 0,
+		},
+		// specifying "custom1" tag includes file with 1 error
+		{
+			tags:            []string{"custom1"},
+			numExpectedErrs: 1,
+		},
+		// specifying "custom1" and "custom2" tags includes 2 files with 1 error each
+		{
+			tags:            []string{"custom1", "custom2"},
+			numExpectedErrs: 2,
+		},
+	}
+
+	for i, currCase := range cases {
+		checker := NewChecker()
+		checker.Tags = currCase.tags
+		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testBuildTagsDir))
+
+		if currCase.numExpectedErrs == 0 {
+			if err != nil {
+				t.Errorf("Case %d: expected no errors, but got: %v", i, err)
+			}
+			continue
+		}
+
+		uerr, ok := err.(*UncheckedErrors)
+		if !ok {
+			t.Errorf("Case %d: wrong error type returned: %v", i, err)
+			continue
+		}
+
+		if currCase.numExpectedErrs != len(uerr.Errors) {
+			t.Errorf("Case %d:\nExpected: %d errors\nActual:   %d errors", i, currCase.numExpectedErrs, len(uerr.Errors))
+		}
+	}
+}
+
 func TestWhitelist(t *testing.T) {
 
 }
