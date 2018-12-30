@@ -121,11 +121,17 @@ package custom
 `
 	)
 
-	testBuildTagsDir, err := ioutil.TempDir(".", "testbuildtags")
+	tmpGopath, err := ioutil.TempDir("", "testbuildtags")
 	if err != nil {
 		t.Fatalf("unable to create testbuildtags directory: %v", err)
 	}
-	defer os.RemoveAll(testBuildTagsDir)
+	testBuildTagsDir := path.Join(tmpGopath, "src", "github.com/testbuildtags")
+	if err := os.MkdirAll(testBuildTagsDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	defer func() {
+		os.RemoveAll(tmpGopath)
+	}()
 
 	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "custom1.go"), []byte(testBuildCustom1Tag), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags custom1: %v", err)
@@ -161,7 +167,14 @@ package custom
 	for i, currCase := range cases {
 		checker := NewChecker()
 		checker.Tags = currCase.tags
-		err := checker.CheckPackages(path.Join("github.com/kisielk/errcheck/internal/errcheck", testBuildTagsDir))
+
+		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+			cfg.Env = append(os.Environ(), "GOPATH="+tmpGopath)
+			cfg.Dir = testBuildTagsDir
+			pkgs, err := packages.Load(cfg, paths...)
+			return pkgs, err
+		}
+		err := checker.CheckPackages("github.com/testbuildtags")
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
