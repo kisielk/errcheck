@@ -93,7 +93,7 @@ func TestBuildTags(t *testing.T) {
 	const (
 		// uses "custom1" build tag and contains 1 unchecked error
 		testBuildCustom1Tag = `
-// +build custom1
+` + `// +build custom1
 
 package custom
 
@@ -105,7 +105,7 @@ func Print1() {
 }`
 		// uses "custom2" build tag and contains 1 unchecked error
 		testBuildCustom2Tag = `
-// +build custom2
+` + `// +build custom2
 
 package custom
 
