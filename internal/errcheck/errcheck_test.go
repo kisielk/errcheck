@@ -43,7 +43,7 @@ func init() {
 	}
 	pkgs, err := packages.Load(cfg, testPackage)
 	if err != nil {
-		panic("failed to import test package")
+		panic(fmt.Errorf("failed to import test package: %v", err))
 	}
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
