@@ -6,8 +6,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"runtime"
-	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/packages"
@@ -216,11 +214,6 @@ func TestIgnore(t *testing.T) {
 		return nil
 	}`
 
-	if strings.HasPrefix(runtime.Version(), "go1.5") && os.Getenv("GO15VENDOREXPERIMENT") != "1" {
-		// skip tests if running in go1.5 and vendoring is not enabled
-		t.SkipNow()
-	}
-
 	// copy testvendor directory into directory for test
 	tmpGopath, err := ioutil.TempDir("", "testvendor")
 	if err != nil {
@@ -314,11 +307,6 @@ func TestWithoutGeneratedCode(t *testing.T) {
 	func Info() error {
 		return nil
 	}`
-
-	if strings.HasPrefix(runtime.Version(), "go1.5") && os.Getenv("GO15VENDOREXPERIMENT") != "1" {
-		// skip tests if running in go1.5 and vendoring is not enabled
-		t.SkipNow()
-	}
 
 	// copy testvendor directory into directory for test
 	tmpGopath, err := ioutil.TempDir("", "testvendor")
