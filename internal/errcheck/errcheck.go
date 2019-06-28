@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
@@ -217,6 +218,20 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		}
 	}
 
+	gomod, err := exec.Command("go", "env", "GOMOD").Output()
+	go111module := (err == nil) && strings.TrimSpace(string(gomod)) != ""
+	ignore := c.Ignore
+	if go111module {
+		ignore = make(map[string]*regexp.Regexp)
+		for pkg, re := range c.Ignore {
+			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); ok {
+				ignore[nonVendoredPkg] = re
+			} else {
+				ignore[pkg] = re
+			}
+		}
+	}
+
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
 	for _, pkg := range pkgs {
@@ -227,13 +242,14 @@ func (c *Checker) CheckPackages(paths ...string) error {
 			c.logf("Checking %s", pkg.Types.Path())
 
 			v := &visitor{
-				pkg:     pkg,
-				ignore:  c.Ignore,
-				blank:   c.Blank,
-				asserts: c.Asserts,
-				lines:   make(map[string][]string),
-				exclude: c.exclude,
-				errors:  []UncheckedError{},
+				pkg:         pkg,
+				ignore:      ignore,
+				blank:       c.Blank,
+				asserts:     c.Asserts,
+				lines:       make(map[string][]string),
+				exclude:     c.exclude,
+				go111module: go111module,
+				errors:      []UncheckedError{},
 			}
 
 			for _, astFile := range v.pkg.Syntax {
@@ -265,12 +281,13 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 // visitor implements the errcheck algorithm
 type visitor struct {
-	pkg     *packages.Package
-	ignore  map[string]*regexp.Regexp
-	blank   bool
-	asserts bool
-	lines   map[string][]string
-	exclude map[string]bool
+	pkg         *packages.Package
+	ignore      map[string]*regexp.Regexp
+	blank       bool
+	asserts     bool
+	lines       map[string][]string
+	exclude     map[string]bool
+	go111module bool
 
 	errors []UncheckedError
 }
@@ -439,9 +456,11 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 
 			// if current package being considered is vendored, check to see if it should be ignored based
 			// on the unvendored path.
-			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg.Path()); ok {
-				if re, ok := v.ignore[nonVendoredPkg]; ok {
-					return re.MatchString(id.Name)
+			if !v.go111module {
+				if nonVendoredPkg, ok := nonVendoredPkgPath(pkg.Path()); ok {
+					if re, ok := v.ignore[nonVendoredPkg]; ok {
+						return re.MatchString(id.Name)
+					}
 				}
 			}
 		}
