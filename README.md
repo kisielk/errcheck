@@ -60,6 +60,16 @@ An example of an exclude file is:
 The exclude list is combined with an internal list for functions in the Go standard library that
 have an error return type but are documented to never return an error.
 
+When using vendored dependencies, specify the full import path. For example:
+* Your project's import path is `example.com/yourpkg`
+* You've vendored `example.net/fmt2` as `vendor/example.net/fmt2`
+* You want to exclude `fmt2.Println` from error checking
+
+In this case, add this line to your exclude file:
+```
+example.com/yourpkg/vendor/example.net/fmt2.Println
+```
+
 
 ### The deprecated method
 
