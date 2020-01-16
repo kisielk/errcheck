@@ -364,6 +364,7 @@ require github.com/testlog v0.0.0
 	cases := []struct {
 		withoutGeneratedCode bool
 		numExpectedErrs      int
+		withModVendor        bool
 	}{
 		// basic case has one error
 		{
@@ -375,16 +376,32 @@ require github.com/testlog v0.0.0
 			withoutGeneratedCode: true,
 			numExpectedErrs:      0,
 		},
+		// using checker.Mod="vendor"
+		{
+			withoutGeneratedCode: false,
+			numExpectedErrs:      1,
+			withModVendor:        true,
+		},
 	}
 
 	for i, test := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var checker Checker
 			checker.Exclusions.GeneratedFiles = test.withoutGeneratedCode
+			if test.withModVendor {
+				if os.Getenv("GO111MODULE") == "off" {
+					t.Skip("-mod=vendor doesn't work if modules are disabled")
+				}
+				checker.Mod = "vendor"
+			}
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 				cfg.Env = append(os.Environ(),
-					"GOPATH="+tmpGopath,
-					"GOFLAGS=-mod=vendor")
+					"GOPATH="+tmpGopath)
+
+				if !test.withModVendor {
+					cfg.Env = append(cfg.Env,
+						"GOFLAGS=-mod=vendor")
+				}
 				cfg.Dir = testVendorDir
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
