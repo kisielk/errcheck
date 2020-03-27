@@ -3,23 +3,23 @@ sudo: false
 
 matrix:
   include:
-    - go: "1.9"
-    - go: "1.10"
-    - go: "1.11"
+    - go: "1.9.x"
+    - go: "1.10.x"
+    - go: "1.11.x"
       env: {GO111MODULE: "off"}
-    - go: "1.11"
+    - go: "1.11.x"
       env: {GO111MODULE: "on"}
-    - go: "1.12"
+    - go: "1.12.x"
       env: {GO111MODULE: "off"}
-    - go: "1.12"
+    - go: "1.12.x"
       env: {GO111MODULE: "on"}
-    - go: "1.13"
+    - go: "1.13.x"
       env: {GO111MODULE: "off"}
-    - go: "1.13"
+    - go: "1.13.x"
       env: {GO111MODULE: "on"}
-    - go: "1.14"
+    - go: "1.14.x"
       env: {GO111MODULE: "off"}
-    - go: "1.14"
+    - go: "1.14.x"
       env: {GO111MODULE: "on"}
     - go: "tip"
       env: {GO111MODULE: "off"}
