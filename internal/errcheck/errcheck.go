@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -212,11 +213,14 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		return err
 	}
 	// Check for errors in the initial packages.
+	work := make(chan *packages.Package, len(pkgs))
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
 			return fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
 		}
+		work <- pkg
 	}
+	close(work)
 
 	gomod, err := exec.Command("go", "env", "GOMOD").Output()
 	go111module := (err == nil) && strings.TrimSpace(string(gomod)) != ""
@@ -234,32 +238,34 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
-	for _, pkg := range pkgs {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
 
-		go func(pkg *packages.Package) {
+		go func() {
 			defer wg.Done()
-			c.logf("Checking %s", pkg.Types.Path())
+			for pkg := range work {
+				c.logf("Checking %s", pkg.Types.Path())
 
-			v := &visitor{
-				pkg:         pkg,
-				ignore:      ignore,
-				blank:       c.Blank,
-				asserts:     c.Asserts,
-				lines:       make(map[string][]string),
-				exclude:     c.exclude,
-				go111module: go111module,
-				errors:      []UncheckedError{},
-			}
-
-			for _, astFile := range v.pkg.Syntax {
-				if c.shouldSkipFile(astFile) {
-					continue
+				v := &visitor{
+					pkg:         pkg,
+					ignore:      ignore,
+					blank:       c.Blank,
+					asserts:     c.Asserts,
+					lines:       make(map[string][]string),
+					exclude:     c.exclude,
+					go111module: go111module,
+					errors:      []UncheckedError{},
 				}
-				ast.Walk(v, astFile)
+
+				for _, astFile := range v.pkg.Syntax {
+					if c.shouldSkipFile(astFile) {
+						continue
+					}
+					ast.Walk(v, astFile)
+				}
+				u.Append(v.errors...)
 			}
-			u.Append(v.errors...)
-		}(pkg)
+		}()
 	}
 
 	wg.Wait()
