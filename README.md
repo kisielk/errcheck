@@ -55,6 +55,8 @@ An example of an exclude file is:
     io/ioutil.ReadFile
     io.Copy(*bytes.Buffer)
     io.Copy(os.Stdout)
+
+    // Sometimes we don't care if a HTTP request fails.
     (*net/http.Client).Do
 
 The exclude list is combined with an internal list for functions in the Go standard library that
@@ -70,6 +72,7 @@ In this case, add this line to your exclude file:
 example.com/yourpkg/vendor/example.net/fmt2.Println
 ```
 
+Empty lines and lines starting with `//` are ignored.
 
 ### The deprecated method
 

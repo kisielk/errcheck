@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -152,26 +154,17 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	}
 
 	if excludeFile != "" {
-		exclude := make(map[string]bool)
-		fh, err := os.Open(excludeFile)
+		excludes, err := readExcludes(excludeFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not read exclude file: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
 			return nil, exitFatalError
 		}
-		scanner := bufio.NewScanner(fh)
-		for scanner.Scan() {
-			name := scanner.Text()
-			exclude[name] = true
-
-			if checker.Verbose {
-				fmt.Printf("Excluding %s\n", name)
+		if checker.Verbose {
+			for _, exclude := range excludes {
+				fmt.Printf("Excluding %v\n", exclude)
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "Could not read exclude file: %s\n", err)
-			return nil, exitFatalError
-		}
-		checker.SetExclude(exclude)
+		checker.SetExclude(excludes)
 	}
 
 	checker.Tags = tags
@@ -187,6 +180,32 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 		paths = []string{"."}
 	}
 	return paths, exitCodeOk
+}
+
+// readExcludes reads an excludes file, a newline delimited file that lists
+// patterns for which to allow unchecked errors.
+func readExcludes(path string) (map[string]bool, error) {
+	excludes := map[string]bool{}
+
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(buf))
+	for scanner.Scan() {
+		name := scanner.Text()
+		// Skip comments and empty lines.
+		if strings.HasPrefix(name, "//") || name == "" {
+			continue
+		}
+		excludes[name] = true
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return excludes, nil
 }
 
 func main() {
