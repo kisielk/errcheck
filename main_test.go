@@ -199,7 +199,7 @@ func TestParseFlags(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		checker := &errcheck.Checker{}
+		checker := errcheck.NewChecker()
 		p, e := parseFlags(checker, c.args)
 
 		argsStr := strings.Join(c.args, " ")
@@ -225,9 +225,9 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestReadExcludes(t *testing.T) {
-	expectedExcludes := map[string]bool{
-		"hello()": true,
-		"world()": true,
+	expectedExcludes := []string{
+		"hello()",
+		"world()",
 	}
 	t.Logf("expectedExcludes: %#v", expectedExcludes)
 	excludes, err := readExcludes("testdata/excludes.txt")

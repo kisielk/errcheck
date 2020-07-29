@@ -25,12 +25,48 @@ var errorType *types.Interface
 
 func init() {
 	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
-
 }
 
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
 	ErrNoGoFiles = errors.New("package contains no go source files")
+	// DefaultExcludes is a list of symbols that are excluded from checks by default.
+	// Note that they still need to be explicitly added to checker with AddExcludes().
+	DefaultExcludes = []string{
+		// bytes
+		"(*bytes.Buffer).Write",
+		"(*bytes.Buffer).WriteByte",
+		"(*bytes.Buffer).WriteRune",
+		"(*bytes.Buffer).WriteString",
+
+		// fmt
+		"fmt.Errorf",
+		"fmt.Print",
+		"fmt.Printf",
+		"fmt.Println",
+		"fmt.Fprint(*bytes.Buffer)",
+		"fmt.Fprintf(*bytes.Buffer)",
+		"fmt.Fprintln(*bytes.Buffer)",
+		"fmt.Fprint(*strings.Builder)",
+		"fmt.Fprintf(*strings.Builder)",
+		"fmt.Fprintln(*strings.Builder)",
+		"fmt.Fprint(os.Stderr)",
+		"fmt.Fprintf(os.Stderr)",
+		"fmt.Fprintln(os.Stderr)",
+
+		// math/rand
+		"math/rand.Read",
+		"(*math/rand.Rand).Read",
+
+		// strings
+		"(*strings.Builder).Write",
+		"(*strings.Builder).WriteByte",
+		"(*strings.Builder).WriteRune",
+		"(*strings.Builder).WriteString",
+
+		// hash
+		"(hash.Hash).Write",
+	}
 )
 
 // UncheckedError indicates the position of an unchecked error return.
@@ -116,54 +152,12 @@ type Checker struct {
 }
 
 func NewChecker() *Checker {
-	c := Checker{}
-	c.SetExclude(map[string]bool{})
-	return &c
+	return &Checker{exclude: map[string]bool{}}
 }
 
-func (c *Checker) SetExclude(l map[string]bool) {
-	c.exclude = map[string]bool{}
-
-	// Default exclude for stdlib functions
-	for _, exc := range []string{
-		// bytes
-		"(*bytes.Buffer).Write",
-		"(*bytes.Buffer).WriteByte",
-		"(*bytes.Buffer).WriteRune",
-		"(*bytes.Buffer).WriteString",
-
-		// fmt
-		"fmt.Errorf",
-		"fmt.Print",
-		"fmt.Printf",
-		"fmt.Println",
-		"fmt.Fprint(*bytes.Buffer)",
-		"fmt.Fprintf(*bytes.Buffer)",
-		"fmt.Fprintln(*bytes.Buffer)",
-		"fmt.Fprint(*strings.Builder)",
-		"fmt.Fprintf(*strings.Builder)",
-		"fmt.Fprintln(*strings.Builder)",
-		"fmt.Fprint(os.Stderr)",
-		"fmt.Fprintf(os.Stderr)",
-		"fmt.Fprintln(os.Stderr)",
-
-		// math/rand
-		"math/rand.Read",
-		"(*math/rand.Rand).Read",
-
-		// strings
-		"(*strings.Builder).Write",
-		"(*strings.Builder).WriteByte",
-		"(*strings.Builder).WriteRune",
-		"(*strings.Builder).WriteString",
-
-		// hash
-		"(hash.Hash).Write",
-	} {
-		c.exclude[exc] = true
-	}
-
-	for k := range l {
+func (c *Checker) AddExcludes(excludes []string) {
+	for _, k := range excludes {
+		c.logf("Excluding %v", k)
 		c.exclude[k] = true
 	}
 }
