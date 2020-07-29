@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 
 	"github.com/kisielk/errcheck/internal/errcheck"
@@ -107,8 +106,6 @@ func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
 }
 
 func mainCmd(args []string) int {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	checker := errcheck.NewChecker()
 	paths, err := parseFlags(checker, args)
 	if err != exitCodeOk {
