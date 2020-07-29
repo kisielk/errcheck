@@ -59,8 +59,11 @@ An example of an exclude file is:
     // Sometimes we don't care if a HTTP request fails.
     (*net/http.Client).Do
 
-The exclude list is combined with an internal list for functions in the Go standard library that
-have an error return type but are documented to never return an error.
+By default, the exclude list is combined with an internal list for functions in
+the Go standard library that have an error return type but are documented to never
+return an error. To disable the built-in exclude list, pass the `-excludeonly` flag.
+
+Run errcheck in `-verbose` mode to see the resulting list of added excludes.
 
 When using vendored dependencies, specify the full import path. For example:
 * Your project's import path is `example.com/yourpkg`
