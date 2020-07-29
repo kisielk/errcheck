@@ -225,9 +225,9 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestReadExcludes(t *testing.T) {
-	expectedExcludes := map[string]bool{
-		"hello()": true,
-		"world()": true,
+	expectedExcludes := []string{
+		"hello()",
+		"world()",
 	}
 	t.Logf("expectedExcludes: %#v", expectedExcludes)
 	excludes, err := readExcludes("testdata/excludes.txt")

@@ -146,8 +146,15 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	var excludeFile string
 	flags.StringVar(&excludeFile, "exclude", "", "Path to a file containing a list of functions to exclude from checking")
 
+	var excludeOnly bool
+	flags.BoolVar(&excludeOnly, "excludeonly", false, "Use only excludes from -exclude file")
+
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, exitFatalError
+	}
+
+	if !excludeOnly {
+		checker.AddExcludes(errcheck.DefaultExcludes)
 	}
 
 	if excludeFile != "" {
@@ -156,12 +163,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 			fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
 			return nil, exitFatalError
 		}
-		if checker.Verbose {
-			for _, exclude := range excludes {
-				fmt.Printf("Excluding %v\n", exclude)
-			}
-		}
-		checker.SetExclude(excludes)
+		checker.AddExcludes(excludes)
 	}
 
 	checker.Tags = tags
@@ -181,8 +183,8 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 
 // readExcludes reads an excludes file, a newline delimited file that lists
 // patterns for which to allow unchecked errors.
-func readExcludes(path string) (map[string]bool, error) {
-	excludes := map[string]bool{}
+func readExcludes(path string) ([]string, error) {
+	var excludes []string
 
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -190,13 +192,14 @@ func readExcludes(path string) (map[string]bool, error) {
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(buf))
+
 	for scanner.Scan() {
 		name := scanner.Text()
 		// Skip comments and empty lines.
 		if strings.HasPrefix(name, "//") || name == "" {
 			continue
 		}
-		excludes[name] = true
+		excludes = append(excludes, name)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
