@@ -112,14 +112,6 @@ specified for it. To disable this, specify a regex that matches nothing:
 The `-ignoretests` flag disables checking of `_test.go` files. It takes
 no arguments.
 
-## Cgo
-
-Currently errcheck is unable to check packages that import "C" due to limitations in the importer when used with versions earlier than Go 1.11.
-
-However, you can use errcheck on packages that depend on those which use cgo. In order for this to work you need to go install the cgo dependencies before running errcheck on the dependent packages.
-
-See https://github.com/kisielk/errcheck/issues/16 for more details.
-
 ## Exit Codes
 
 errcheck returns 1 if any problems were found in the checked files.
