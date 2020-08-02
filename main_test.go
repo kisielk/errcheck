@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kisielk/errcheck/internal/errcheck"
+	"github.com/kisielk/errcheck/errcheck"
 )
 
 func TestMain(t *testing.T) {

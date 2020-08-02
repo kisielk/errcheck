@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kisielk/errcheck/internal/errcheck"
+	"github.com/kisielk/errcheck/errcheck"
 )
 
 const (
