@@ -1,6 +1,4 @@
 // Package errcheck is the library used to implement the errcheck command-line tool.
-//
-// Note: The API of this package has not been finalized and may change at any point.
 package errcheck
 
 import (
@@ -87,6 +85,7 @@ type UncheckedErrors struct {
 	Errors []UncheckedError
 }
 
+// Append appends errors to e. It is goroutine-safe.
 func (e *UncheckedErrors) Append(errors ...UncheckedError) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -124,28 +123,33 @@ func (e byName) Less(i, j int) bool {
 	return ei.Line < ej.Line
 }
 
+// Checker checks that you checked errors.
 type Checker struct {
-	// ignore is a map of package names to regular expressions. Identifiers from a package are
+	// Ignore is a map of package names to regular expressions. Identifiers from a package are
 	// checked against its regular expressions and if any of the expressions match the call
 	// is not checked.
 	Ignore map[string]*regexp.Regexp
 
-	// If blank is true then assignments to the blank identifier are also considered to be
+	// Blank, if true, means assignments to the blank identifier are also considered to be
 	// ignored errors.
 	Blank bool
 
-	// If asserts is true then ignored type assertion results are also checked
+	// Asserts causes ignored type assertion results to also be checked.
 	Asserts bool
 
-	// build tags
+	// Tags are a list of build tags to use.
 	Tags []string
 
+	// Verbose causes extra information to be output to stdout.
 	Verbose bool
 
-	// If true, checking of _test.go files is disabled
+	// WithoutTests disables checking of _test.go files.
 	WithoutTests bool
 
-	// If true, checking of files with generated code is disabled
+	// WithoutGeneratedCode disables checking of files with generated code.
+	// It behaves according to the following regular expression:
+	//
+	//   ^// Code generated .* DO NOT EDIT\\.$
 	WithoutGeneratedCode bool
 
 	exclude map[string]bool
@@ -155,6 +159,7 @@ func NewChecker() *Checker {
 	return &Checker{exclude: map[string]bool{}}
 }
 
+// AddExcludes adds expressions to exclude from checking.
 func (c *Checker) AddExcludes(excludes []string) {
 	for _, k := range excludes {
 		c.logf("Excluding %v", k)
