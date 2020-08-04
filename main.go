@@ -62,17 +62,16 @@ func (f ignoreFlag) Set(s string) error {
 type tagsFlag []string
 
 func (f *tagsFlag) String() string {
-	return fmt.Sprintf("%q", strings.Join(*f, " "))
+	return fmt.Sprintf("%q", strings.Join(*f, ","))
 }
 
 func (f *tagsFlag) Set(s string) error {
 	if s == "" {
 		return nil
 	}
-	tags := strings.Split(s, " ")
-	if tags == nil {
-		return nil
-	}
+	tags := strings.FieldsFunc(s, func(c rune) bool {
+		return c == ' ' || c == ','
+	})
 	for _, tag := range tags {
 		if tag != "" {
 			*f = append(*f, tag)
@@ -137,7 +136,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
 
 	tags := tagsFlag{}
-	flags.Var(&tags, "tags", "space-separated list of build tags to include")
+	flags.Var(&tags, "tags", "comma or space-separated list of build tags to include")
 	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
 	ignore := ignoreFlag(map[string]*regexp.Regexp{})
 	flags.Var(ignore, "ignore", "[deprecated] comma-separated list of pairs of the form pkg:regex\n"+
