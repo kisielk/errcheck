@@ -164,6 +164,15 @@ func TestParseFlags(t *testing.T) {
 			error:   exitCodeOk,
 		},
 		parseTestCase{
+			args:    []string{"errcheck", "-tags", "foo,bar,!baz"},
+			paths:   []string{"."},
+			ignore:  map[string]string{},
+			tags:    []string{"foo", "bar", "!baz"},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},

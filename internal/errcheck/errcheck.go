@@ -177,7 +177,7 @@ func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode:       packages.LoadAllSyntax,
 		Tests:      !c.WithoutTests,
-		BuildFlags: []string{fmt.Sprintf("-tags=%s", strings.Join(c.Tags, " "))},
+		BuildFlags: []string{fmtTags(c.Tags)},
 	}
 	return loadPackages(cfg, paths...)
 }
