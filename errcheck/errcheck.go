@@ -127,7 +127,8 @@ func (e byName) Less(i, j int) bool {
 
 // Exclusions define symbols and language elements that will be not checked
 type Exclusions struct {
-	// Packages []string
+	// Packages lists regular expression patterns that exclude whole packages.
+	Packages []string
 
 	// Symbols lists regular expression patterns that exclude package symbols.
 	//
@@ -160,11 +161,7 @@ type Exclusions struct {
 
 // Checker checks that you checked errors.
 type Checker struct {
-	// Ignore is a map of package names to regular expressions. Identifiers from a package are
-	// checked against its regular expressions and if any of the expressions match the call
-	// is not checked.
-	Ignore map[string]*regexp.Regexp
-
+	// Exclusions defines code packages, symbols, and other elements that will not be checked.
 	Exclusions Exclusions
 
 	// Tags are a list of build tags to use.
@@ -172,10 +169,6 @@ type Checker struct {
 
 	// Verbose causes extra information to be output to stdout.
 	Verbose bool
-}
-
-func NewChecker() *Checker {
-	return &Checker{}
 }
 
 func (c *Checker) logf(msg string, args ...interface{}) {
@@ -199,6 +192,7 @@ func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 }
 
 var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
+var dotStar = regexp.MustCompile(".*")
 
 func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	if !c.Exclusions.GeneratedFiles {
@@ -234,15 +228,14 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 	gomod, err := exec.Command("go", "env", "GOMOD").Output()
 	go111module := (err == nil) && strings.TrimSpace(string(gomod)) != ""
-	ignore := c.Ignore
-	if go111module {
-		ignore = make(map[string]*regexp.Regexp)
-		for pkg, re := range c.Ignore {
-			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); ok {
-				ignore[nonVendoredPkg] = re
-			} else {
-				ignore[pkg] = re
-			}
+
+	ignore := map[string]*regexp.Regexp{}
+
+	for _, pkg := range c.Exclusions.Packages {
+		if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); go111module && ok {
+			ignore[nonVendoredPkg] = dotStar
+		} else {
+			ignore[pkg] = dotStar
 		}
 	}
 

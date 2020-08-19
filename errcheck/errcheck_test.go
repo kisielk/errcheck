@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"regexp"
 	"testing"
 
 	"golang.org/x/tools/go/packages"
@@ -166,7 +165,7 @@ package custom
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
+		var checker Checker
 		checker.Tags = currCase.tags
 
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
@@ -249,7 +248,7 @@ require github.com/testlog v0.0.0
 	}
 
 	cases := []struct {
-		ignore          map[string]*regexp.Regexp
+		ignore          []string
 		numExpectedErrs int
 	}{
 		// basic case has one error
@@ -259,21 +258,21 @@ require github.com/testlog v0.0.0
 		},
 		// ignoring vendored import works
 		{
-			ignore: map[string]*regexp.Regexp{
-				path.Join("github.com/testvendor/vendor/github.com/testlog"): regexp.MustCompile("Info"),
+			ignore: []string{
+				"github.com/testvendor/vendor/github.com/testlog",
 			},
 		},
 		// non-vendored path ignores vendored import
 		{
-			ignore: map[string]*regexp.Regexp{
-				"github.com/testlog": regexp.MustCompile("Info"),
+			ignore: []string{
+				"github.com/testlog",
 			},
 		},
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
-		checker.Ignore = currCase.ignore
+		var checker Checker
+		checker.Exclusions.Packages = currCase.ignore
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
 				"GOPATH="+tmpGopath,
@@ -368,7 +367,7 @@ require github.com/testlog v0.0.0
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
+		var checker Checker
 		checker.Exclusions.GeneratedFiles = currCase.withoutGeneratedCode
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
@@ -404,7 +403,7 @@ func test(t *testing.T, f flags) {
 		asserts bool = f&CheckAsserts != 0
 		blank   bool = f&CheckBlank != 0
 	)
-	checker := NewChecker()
+	var checker Checker
 	checker.Exclusions.TypeAssertions = !asserts
 	checker.Exclusions.BlankAssignments = !blank
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)

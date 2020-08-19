@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -64,7 +63,7 @@ func TestMain(t *testing.T) {
 type parseTestCase struct {
 	args   []string
 	paths  []string
-	ignore map[string]string
+	ignore []string
 	tags   []string
 	// here, blank and asserts are the inverse of TypeAssertions and BlankAssignments
 	blank   bool
@@ -77,7 +76,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -86,7 +85,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-blank", "-asserts"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{},
 			blank:   true,
 			asserts: true,
@@ -95,34 +94,16 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "foo", "bar"},
 			paths:   []string{"foo", "bar"},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
 			error:   exitCodeOk,
 		},
 		parseTestCase{
-			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
+			args:    []string{"errcheck", "-ignorepkg", "fmt,encoding/binary"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": ".*", "encoding/binary": dotStar.String()},
-			tags:    []string{},
-			blank:   false,
-			asserts: false,
-			error:   exitCodeOk,
-		},
-		parseTestCase{
-			args:    []string{"errcheck", "-ignore", "fmt:[FS]?[Pp]rint*"},
-			paths:   []string{"."},
-			ignore:  map[string]string{"fmt": "[FS]?[Pp]rint*"},
-			tags:    []string{},
-			blank:   false,
-			asserts: false,
-			error:   exitCodeOk,
-		},
-		parseTestCase{
-			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
-			paths:   []string{"."},
-			ignore:  map[string]string{"": "[rR]ead|[wW]rite"},
+			ignore:  []string{"fmt", "encoding/binary"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -131,7 +112,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"testing": dotStar.String()},
+			ignore:  []string{"testing"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -140,7 +121,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
 			paths:   []string{"."},
-			ignore:  map[string]string{"testing": dotStar.String(), "foo": dotStar.String()},
+			ignore:  []string{"testing", "foo"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -149,7 +130,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{"foo"},
 			blank:   false,
 			asserts: false,
@@ -158,7 +139,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo bar !baz"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -167,7 +148,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo,bar,!baz"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -176,7 +157,7 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
 			paths:   []string{"."},
-			ignore:  map[string]string{},
+			ignore:  []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -196,12 +177,12 @@ func TestParseFlags(t *testing.T) {
 		return true
 	}
 
-	ignoresEqual := func(a map[string]*regexp.Regexp, b map[string]string) bool {
+	ignoresEqual := func(a []string, b []string) bool {
 		if len(a) != len(b) {
 			return false
 		}
 		for k, v := range a {
-			if v.String() != b[k] {
+			if v != b[k] {
 				return false
 			}
 		}
@@ -209,14 +190,14 @@ func TestParseFlags(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		checker := errcheck.NewChecker()
-		p, e := parseFlags(checker, c.args)
+		var checker errcheck.Checker
+		p, e := parseFlags(&checker, c.args)
 
 		argsStr := strings.Join(c.args, " ")
 		if !slicesEqual(p, c.paths) {
 			t.Errorf("%q: path got %q want %q", argsStr, p, c.paths)
 		}
-		if ign := checker.Ignore; !ignoresEqual(ign, c.ignore) {
+		if ign := checker.Exclusions.Packages; !ignoresEqual(ign, c.ignore) {
 			t.Errorf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
 		}
 		if tags := checker.Tags; !slicesEqual(tags, c.tags) {
