@@ -104,7 +104,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	ignore := flags.String("ignore", "", "[deprecated] comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg.")
 	if *ignore != "" {
-		fmt.Fprintf(os.Stderr, "error: -ignore flag is deprecated, please use -ignorepkg instead")
+		fmt.Fprintf(os.Stderr, "error: -ignore flag is deprecated, please use -exclude and/or -ignorepkg instead")
 		return nil, exitFatalError
 	}
 
