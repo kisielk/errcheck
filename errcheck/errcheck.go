@@ -28,9 +28,11 @@ func init() {
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
 	ErrNoGoFiles = errors.New("package contains no go source files")
-	// DefaultExcludes is a list of symbols that are excluded from checks by default.
-	// Note that they still need to be explicitly added to checker with AddExcludes().
-	DefaultExcludes = []string{
+
+	// DefaultExcludedSymbols is a list of symbol names that are usually excluded from checks by default.
+	//
+	// Note, that they still need to be explicitly copied to Checker.Exclusions.Symbols
+	DefaultExcludedSymbols = []string{
 		// bytes
 		"(*bytes.Buffer).Write",
 		"(*bytes.Buffer).WriteByte",
@@ -126,7 +128,16 @@ func (e byName) Less(i, j int) bool {
 // Exclusions define symbols and language elements that will be not checked
 type Exclusions struct {
 	// Packages []string
-	// Symbols  []string
+
+	// Symbols lists regular expression patterns that exclude package symbols.
+	//
+	// For example:
+	//
+	//   "fmt.Errorf"              // function
+	//   "fmt.Fprintf(os.Stderr)"  // function with set argument value
+	//   "(hash.Hash).Write"       // method
+	//
+	Symbols []string
 
 	// TestFiles excludes _test.go files.
 	TestFiles bool
@@ -137,6 +148,7 @@ type Exclusions struct {
 	// match the following regular expression:
 	//
 	//   ^// Code generated .* DO NOT EDIT\\.$
+	//
 	GeneratedFiles bool
 
 	// BlankAssignments bool
@@ -164,20 +176,10 @@ type Checker struct {
 
 	// Verbose causes extra information to be output to stdout.
 	Verbose bool
-
-	exclude map[string]bool
 }
 
 func NewChecker() *Checker {
-	return &Checker{exclude: map[string]bool{}}
-}
-
-// AddExcludes adds expressions to exclude from checking.
-func (c *Checker) AddExcludes(excludes []string) {
-	for _, k := range excludes {
-		c.logf("Excluding %v", k)
-		c.exclude[k] = true
-	}
+	return &Checker{}
 }
 
 func (c *Checker) logf(msg string, args ...interface{}) {
@@ -248,6 +250,12 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		}
 	}
 
+	excludedSymbols := map[string]bool{}
+	for _, sym := range c.Exclusions.Symbols {
+		c.logf("Excluding %v", sym)
+		excludedSymbols[sym] = true
+	}
+
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -264,7 +272,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 					blank:       c.Blank,
 					asserts:     c.Asserts,
 					lines:       make(map[string][]string),
-					exclude:     c.exclude,
+					exclude:     excludedSymbols,
 					go111module: go111module,
 					errors:      []UncheckedError{},
 				}

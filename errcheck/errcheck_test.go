@@ -407,10 +407,10 @@ func test(t *testing.T, f flags) {
 	checker := NewChecker()
 	checker.Asserts = asserts
 	checker.Blank = blank
-	checker.AddExcludes(DefaultExcludes)
-	checker.AddExcludes([]string{
+	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
+	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
-	})
+	)
 	err := checker.CheckPackages(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {

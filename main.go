@@ -154,7 +154,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	}
 
 	if !excludeOnly {
-		checker.AddExcludes(errcheck.DefaultExcludes)
+		checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, errcheck.DefaultExcludedSymbols...)
 	}
 
 	if excludeFile != "" {
@@ -163,7 +163,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 			fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
 			return nil, exitFatalError
 		}
-		checker.AddExcludes(excludes)
+		checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, excludes...)
 	}
 
 	checker.Tags = tags
