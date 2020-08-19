@@ -405,8 +405,8 @@ func test(t *testing.T, f flags) {
 		blank   bool = f&CheckBlank != 0
 	)
 	checker := NewChecker()
-	checker.Asserts = asserts
-	checker.Blank = blank
+	checker.Exclusions.TypeAssertions = !asserts
+	checker.Exclusions.BlankAssignments = !blank
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),

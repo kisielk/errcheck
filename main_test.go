@@ -62,10 +62,11 @@ func TestMain(t *testing.T) {
 }
 
 type parseTestCase struct {
-	args    []string
-	paths   []string
-	ignore  map[string]string
-	tags    []string
+	args   []string
+	paths  []string
+	ignore map[string]string
+	tags   []string
+	// here, blank and asserts are the inverse of TypeAssertions and BlankAssignments
 	blank   bool
 	asserts bool
 	error   int
@@ -221,11 +222,11 @@ func TestParseFlags(t *testing.T) {
 		if tags := checker.Tags; !slicesEqual(tags, c.tags) {
 			t.Errorf("%q: tags got %v want %v", argsStr, tags, c.tags)
 		}
-		if b := checker.Blank; b != c.blank {
-			t.Errorf("%q: blank got %v want %v", argsStr, b, c.blank)
+		if b := checker.Exclusions.BlankAssignments; b != !c.blank {
+			t.Errorf("%q: BlankAssignments got %v want %v", argsStr, b, !c.blank)
 		}
-		if a := checker.Asserts; a != c.asserts {
-			t.Errorf("%q: asserts got %v want %v", argsStr, a, c.asserts)
+		if a := checker.Exclusions.TypeAssertions; a != !c.asserts {
+			t.Errorf("%q: TypeAssertions got %v want %v", argsStr, a, !c.asserts)
 		}
 		if e != c.error {
 			t.Errorf("%q: error got %q want %q", argsStr, e, c.error)

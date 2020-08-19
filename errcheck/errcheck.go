@@ -151,8 +151,11 @@ type Exclusions struct {
 	//
 	GeneratedFiles bool
 
-	// BlankAssignments bool
-	// TypeAssertions   bool
+	// BlankAssignments ignores assignments to blank identifier.
+	BlankAssignments bool
+
+	// TypeAssertions ignores unchecked type assertions.
+	TypeAssertions bool
 }
 
 // Checker checks that you checked errors.
@@ -161,13 +164,6 @@ type Checker struct {
 	// checked against its regular expressions and if any of the expressions match the call
 	// is not checked.
 	Ignore map[string]*regexp.Regexp
-
-	// Blank, if true, means assignments to the blank identifier are also considered to be
-	// ignored errors.
-	Blank bool
-
-	// Asserts causes ignored type assertion results to also be checked.
-	Asserts bool
 
 	Exclusions Exclusions
 
@@ -269,8 +265,8 @@ func (c *Checker) CheckPackages(paths ...string) error {
 				v := &visitor{
 					pkg:         pkg,
 					ignore:      ignore,
-					blank:       c.Blank,
-					asserts:     c.Asserts,
+					blank:       !c.Exclusions.BlankAssignments,
+					asserts:     !c.Exclusions.TypeAssertions,
 					lines:       make(map[string][]string),
 					exclude:     excludedSymbols,
 					go111module: go111module,
