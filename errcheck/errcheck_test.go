@@ -369,7 +369,7 @@ require github.com/testlog v0.0.0
 
 	for i, currCase := range cases {
 		checker := NewChecker()
-		checker.WithoutGeneratedCode = currCase.withoutGeneratedCode
+		checker.Exclusions.GeneratedFiles = currCase.withoutGeneratedCode
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
 				"GOPATH="+tmpGopath,

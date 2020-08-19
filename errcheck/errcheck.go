@@ -123,6 +123,26 @@ func (e byName) Less(i, j int) bool {
 	return ei.Line < ej.Line
 }
 
+// Exclusions define symbols and language elements that will be not checked
+type Exclusions struct {
+	// Packages []string
+	// Symbols  []string
+
+	// TestFiles excludes _test.go files.
+	TestFiles bool
+
+	// GeneratedFiles excludes generated source files.
+	//
+	// Source file is assumed to be generated if its contents
+	// match the following regular expression:
+	//
+	//   ^// Code generated .* DO NOT EDIT\\.$
+	GeneratedFiles bool
+
+	// BlankAssignments bool
+	// TypeAssertions   bool
+}
+
 // Checker checks that you checked errors.
 type Checker struct {
 	// Ignore is a map of package names to regular expressions. Identifiers from a package are
@@ -137,20 +157,13 @@ type Checker struct {
 	// Asserts causes ignored type assertion results to also be checked.
 	Asserts bool
 
+	Exclusions Exclusions
+
 	// Tags are a list of build tags to use.
 	Tags []string
 
 	// Verbose causes extra information to be output to stdout.
 	Verbose bool
-
-	// WithoutTests disables checking of _test.go files.
-	WithoutTests bool
-
-	// WithoutGeneratedCode disables checking of files with generated code.
-	// It behaves according to the following regular expression:
-	//
-	//   ^// Code generated .* DO NOT EDIT\\.$
-	WithoutGeneratedCode bool
 
 	exclude map[string]bool
 }
@@ -181,7 +194,7 @@ var loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Pack
 func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode:       packages.LoadAllSyntax,
-		Tests:      !c.WithoutTests,
+		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: []string{fmtTags(c.Tags)},
 	}
 	return loadPackages(cfg, paths...)
@@ -190,7 +203,7 @@ func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
 
 func (c *Checker) shouldSkipFile(file *ast.File) bool {
-	if !c.WithoutGeneratedCode {
+	if !c.Exclusions.GeneratedFiles {
 		return false
 	}
 
