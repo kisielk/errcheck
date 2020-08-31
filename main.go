@@ -71,7 +71,7 @@ func mainCmd(args []string) int {
 		return err
 	}
 
-	if err := checker.CheckPackages(paths...); err != nil {
+	if err := checker.CheckPaths(paths...); err != nil {
 		if e, ok := err.(*errcheck.UncheckedErrors); ok {
 			reportUncheckedErrors(e, checker.Verbose)
 			return exitUncheckedError
