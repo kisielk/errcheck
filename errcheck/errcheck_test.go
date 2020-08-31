@@ -176,7 +176,7 @@ package custom
 			pkgs, err := packages.Load(cfg, paths...)
 			return pkgs, err
 		}
-		err := checker.CheckPackages("github.com/testbuildtags")
+		err := checker.CheckPaths("github.com/testbuildtags")
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
@@ -282,7 +282,7 @@ require github.com/testlog v0.0.0
 			pkgs, err := packages.Load(cfg, paths...)
 			return pkgs, err
 		}
-		err := checker.CheckPackages("github.com/testvendor")
+		err := checker.CheckPaths("github.com/testvendor")
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
@@ -378,7 +378,7 @@ require github.com/testlog v0.0.0
 			pkgs, err := packages.Load(cfg, paths...)
 			return pkgs, err
 		}
-		err := checker.CheckPackages(path.Join("github.com/testvendor"))
+		err := checker.CheckPaths(path.Join("github.com/testvendor"))
 
 		if currCase.numExpectedErrs == 0 {
 			if err != nil {
@@ -411,7 +411,7 @@ func test(t *testing.T, f flags) {
 	checker.AddExcludes([]string{
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	})
-	err := checker.CheckPackages(testPackage)
+	err := checker.CheckPaths(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {
 		t.Fatalf("wrong error type returned: %v", err)

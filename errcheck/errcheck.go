@@ -205,8 +205,59 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	return false
 }
 
-// CheckPackages checks packages for errors.
-func (c *Checker) CheckPackages(paths ...string) error {
+var (
+	goModStatus bool
+	goModOnce   sync.Once
+)
+
+func isGoMod() bool {
+	goModOnce.Do(func() {
+		gomod, err := exec.Command("go", "env", "GOMOD").Output()
+		goModStatus = (err == nil) && strings.TrimSpace(string(gomod)) != ""
+	})
+	return goModStatus
+}
+
+// CheckPaths checks packages for errors.
+func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
+	c.logf("Checking %s", pkg.Types.Path())
+
+	v := &visitor{
+		pkg:     pkg,
+		ignore:  c.Ignore,
+		blank:   c.Blank,
+		asserts: c.Asserts,
+		lines:   make(map[string][]string),
+		exclude: c.exclude,
+		errors:  []UncheckedError{},
+	}
+
+	for _, astFile := range v.pkg.Syntax {
+		if c.shouldSkipFile(astFile) {
+			continue
+		}
+		ast.Walk(v, astFile)
+	}
+	return v.errors
+}
+
+// UpdateNonVendoredIgnore updates the Ignores to use non vendored paths
+func (c *Checker) UpdateNonVendoredIgnore() {
+	if isGoMod() {
+		ignore := make(map[string]*regexp.Regexp)
+		for pkg, re := range c.Ignore {
+			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); ok {
+				ignore[nonVendoredPkg] = re
+			} else {
+				ignore[pkg] = re
+			}
+		}
+		c.Ignore = ignore
+	}
+}
+
+// CheckPaths checks packages for errors.
+func (c *Checker) CheckPaths(paths ...string) error {
 	pkgs, err := c.load(paths...)
 	if err != nil {
 		return err
@@ -221,19 +272,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 	}
 	close(work)
 
-	gomod, err := exec.Command("go", "env", "GOMOD").Output()
-	go111module := (err == nil) && strings.TrimSpace(string(gomod)) != ""
-	ignore := c.Ignore
-	if go111module {
-		ignore = make(map[string]*regexp.Regexp)
-		for pkg, re := range c.Ignore {
-			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); ok {
-				ignore[nonVendoredPkg] = re
-			} else {
-				ignore[pkg] = re
-			}
-		}
-	}
+	c.UpdateNonVendoredIgnore()
 
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
@@ -243,26 +282,7 @@ func (c *Checker) CheckPackages(paths ...string) error {
 		go func() {
 			defer wg.Done()
 			for pkg := range work {
-				c.logf("Checking %s", pkg.Types.Path())
-
-				v := &visitor{
-					pkg:         pkg,
-					ignore:      ignore,
-					blank:       c.Blank,
-					asserts:     c.Asserts,
-					lines:       make(map[string][]string),
-					exclude:     c.exclude,
-					go111module: go111module,
-					errors:      []UncheckedError{},
-				}
-
-				for _, astFile := range v.pkg.Syntax {
-					if c.shouldSkipFile(astFile) {
-						continue
-					}
-					ast.Walk(v, astFile)
-				}
-				u.Append(v.errors...)
+				u.Append(c.CheckPackage(pkg)...)
 			}
 		}()
 	}
@@ -286,13 +306,12 @@ func (c *Checker) CheckPackages(paths ...string) error {
 
 // visitor implements the errcheck algorithm
 type visitor struct {
-	pkg         *packages.Package
-	ignore      map[string]*regexp.Regexp
-	blank       bool
-	asserts     bool
-	lines       map[string][]string
-	exclude     map[string]bool
-	go111module bool
+	pkg     *packages.Package
+	ignore  map[string]*regexp.Regexp
+	blank   bool
+	asserts bool
+	lines   map[string][]string
+	exclude map[string]bool
 
 	errors []UncheckedError
 }
@@ -461,7 +480,7 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 
 			// if current package being considered is vendored, check to see if it should be ignored based
 			// on the unvendored path.
-			if !v.go111module {
+			if !isGoMod() {
 				if nonVendoredPkg, ok := nonVendoredPkgPath(pkg.Path()); ok {
 					if re, ok := v.ignore[nonVendoredPkg]; ok {
 						return re.MatchString(id.Name)
