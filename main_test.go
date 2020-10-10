@@ -67,10 +67,10 @@ type parseTestCase struct {
 	args    []string
 	paths   []string
 	ignore  map[string]string // Exclusions.SymbolRegexpsByPackage
-	pkgs    []string          // == Exclusions.Packages
+	pkgs    []string          // Exclusions.Packages
 	tags    []string          // Tags
-	blank   bool              // == !BlankAssignments
-	asserts bool              // == !TypeAssertions
+	blank   bool              // !BlankAssignments
+	asserts bool              // !TypeAssertions
 	error   int
 }
 

@@ -235,10 +235,12 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 	// Packages, a more narrow regexp will be superceded by dotStar below.
 	if regexps := c.Exclusions.SymbolRegexpsByPackage; regexps != nil {
 		for pkg, re := range regexps {
+			// TODO warn if previous entry overwritten?
 			ignore[nonVendoredPkgPath(pkg)] = re
 		}
 	}
 	for _, pkg := range c.Exclusions.Packages {
+		// TODO warn if previous entry overwritten?
 		ignore[nonVendoredPkgPath(pkg)] = dotStar
 	}
 
