@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"go/types"
 	"os"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"sort"
@@ -210,19 +209,6 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	return false
 }
 
-var (
-	goModStatus bool
-	goModOnce   sync.Once
-)
-
-func isGoMod() bool {
-	goModOnce.Do(func() {
-		gomod, err := exec.Command("go", "env", "GOMOD").Output()
-		goModStatus = (err == nil) && strings.TrimSpace(string(gomod)) != ""
-	})
-	return goModStatus
-}
-
 // CheckPaths checks packages for errors.
 func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 	c.logf("Checking %s", pkg.Types.Path())
@@ -233,9 +219,14 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 		excludedSymbols[sym] = true
 	}
 
+	ignore := map[string]*regexp.Regexp{}
+	for _, pkg := range c.Exclusions.Packages {
+		ignore[nonVendoredPkgPath(pkg)] = dotStar
+	}
+
 	v := &visitor{
 		pkg:     pkg,
-		ignore:  c.getNonVendoredIgnores(),
+		ignore:  ignore,
 		blank:   !c.Exclusions.BlankAssignments,
 		asserts: !c.Exclusions.TypeAssertions,
 		lines:   make(map[string][]string),
@@ -250,21 +241,6 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 		ast.Walk(v, astFile)
 	}
 	return v.errors
-}
-
-// getNonVendoredIgnores gets the ignore expressions for non-vendored packages.
-// They are returned as a map from package path names to '.*' regular
-// expressions.
-func (c *Checker) getNonVendoredIgnores() map[string]*regexp.Regexp {
-	ignore := map[string]*regexp.Regexp{}
-	for _, pkg := range c.Exclusions.Packages {
-		if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); isGoMod() && ok {
-			ignore[nonVendoredPkg] = dotStar
-		} else {
-			ignore[pkg] = dotStar
-		}
-	}
-	return ignore
 }
 
 // CheckPaths checks packages for errors.
@@ -483,18 +459,8 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 
 	if obj := v.pkg.TypesInfo.Uses[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
-			if re, ok := v.ignore[pkg.Path()]; ok {
+			if re, ok := v.ignore[nonVendoredPkgPath(pkg.Path())]; ok {
 				return re.MatchString(id.Name)
-			}
-
-			// if current package being considered is vendored, check to see if it should be ignored based
-			// on the unvendored path.
-			if !isGoMod() {
-				if nonVendoredPkg, ok := nonVendoredPkgPath(pkg.Path()); ok {
-					if re, ok := v.ignore[nonVendoredPkg]; ok {
-						return re.MatchString(id.Name)
-					}
-				}
 			}
 		}
 	}
@@ -502,15 +468,15 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	return false
 }
 
-// nonVendoredPkgPath returns the unvendored version of the provided package path (or returns the provided path if it
-// does not represent a vendored path). The second return value is true if the provided package was vendored, false
-// otherwise.
-func nonVendoredPkgPath(pkgPath string) (string, bool) {
+// nonVendoredPkgPath returns the unvendored version of the provided package
+// path (or returns the provided path if it does not represent a vendored
+// path).
+func nonVendoredPkgPath(pkgPath string) string {
 	lastVendorIndex := strings.LastIndex(pkgPath, "/vendor/")
 	if lastVendorIndex == -1 {
-		return pkgPath, false
+		return pkgPath
 	}
-	return pkgPath[lastVendorIndex+len("/vendor/"):], true
+	return pkgPath[lastVendorIndex+len("/vendor/"):]
 }
 
 // errorsByArg returns a slice s such that
