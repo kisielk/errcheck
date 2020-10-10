@@ -126,10 +126,21 @@ func (e byName) Less(i, j int) bool {
 
 // Exclusions define symbols and language elements that will be not checked
 type Exclusions struct {
-	// Packages lists regular expression patterns that exclude whole packages.
+
+	// Packages lists paths of excluded packages.
 	Packages []string
 
-	// Symbols lists regular expression patterns that exclude package symbols.
+	// SymbolRegexpsByPackage maps individual package paths to regular
+	// expressions that match symbols to be excluded.
+	//
+	// Packages whose paths appear both here and in Packages list will
+	// be excluded entirely.
+	//
+	// This is a legacy input that will be deprecated in errcheck version 2 and
+	// should not be used.
+	SymbolRegexpsByPackage map[string]*regexp.Regexp
+
+	// Symbols lists patterns that exclude individual package symbols.
 	//
 	// For example:
 	//
@@ -209,7 +220,7 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	return false
 }
 
-// CheckPaths checks packages for errors.
+// CheckPackage checks packages for errors.
 func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 	c.logf("Checking %s", pkg.Types.Path())
 
@@ -220,6 +231,13 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 	}
 
 	ignore := map[string]*regexp.Regexp{}
+	// Apply SymbolRegexpsByPackage first so that if the same path appears in
+	// Packages, a more narrow regexp will be superceded by dotStar below.
+	if regexps := c.Exclusions.SymbolRegexpsByPackage; regexps != nil {
+		for pkg, re := range regexps {
+			ignore[nonVendoredPkgPath(pkg)] = re
+		}
+	}
 	for _, pkg := range c.Exclusions.Packages {
 		ignore[nonVendoredPkgPath(pkg)] = dotStar
 	}

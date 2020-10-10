@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/kisielk/errcheck/errcheck"
@@ -20,6 +21,43 @@ const (
 )
 
 var abspath bool
+
+type ignoreFlag map[string]*regexp.Regexp
+
+func (f ignoreFlag) String() string {
+	pairs := make([]string, 0, len(f))
+	for pkg, re := range f {
+		prefix := ""
+		if pkg != "" {
+			prefix = pkg + ":"
+		}
+		pairs = append(pairs, prefix+re.String())
+	}
+	return fmt.Sprintf("%q", strings.Join(pairs, ","))
+}
+
+func (f ignoreFlag) Set(s string) error {
+	if s == "" {
+		return nil
+	}
+	for _, pair := range strings.Split(s, ",") {
+		colonIndex := strings.Index(pair, ":")
+		var pkg, re string
+		if colonIndex == -1 {
+			pkg = ""
+			re = pair
+		} else {
+			pkg = pair[:colonIndex]
+			re = pair[colonIndex+1:]
+		}
+		regex, err := regexp.Compile(re)
+		if err != nil {
+			return err
+		}
+		f[pkg] = regex
+	}
+	return nil
+}
 
 type tagsFlag []string
 
@@ -101,12 +139,9 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	tags := tagsFlag{}
 	flags.Var(&tags, "tags", "comma or space-separated list of build tags to include")
 	ignorePkg := flags.String("ignorepkg", "", "comma-separated list of package paths to ignore")
-	ignore := flags.String("ignore", "", "[deprecated] comma-separated list of pairs of the form pkg:regex\n"+
+	ignore := ignoreFlag(map[string]*regexp.Regexp{})
+	flags.Var(ignore, "ignore", "[deprecated] comma-separated list of pairs of the form pkg:regex\n"+
 		"            the regex is used to ignore names within pkg.")
-	if *ignore != "" {
-		fmt.Fprintf(os.Stderr, "error: -ignore flag is deprecated, please use -exclude and/or -ignorepkg instead")
-		return nil, exitFatalError
-	}
 
 	var excludeFile string
 	flags.StringVar(&excludeFile, "exclude", "", "Path to a file containing a list of functions to exclude from checking")
@@ -140,6 +175,8 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 			checker.Exclusions.Packages = append(checker.Exclusions.Packages, pkg)
 		}
 	}
+
+	checker.Exclusions.SymbolRegexpsByPackage = ignore
 
 	paths := flags.Args()
 	if len(paths) == 0 {

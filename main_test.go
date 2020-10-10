@@ -5,11 +5,14 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/kisielk/errcheck/errcheck"
 )
+
+var dotStar = regexp.MustCompile(".*")
 
 func TestMain(t *testing.T) {
 	saveStderr := os.Stderr
@@ -61,13 +64,13 @@ func TestMain(t *testing.T) {
 }
 
 type parseTestCase struct {
-	args   []string
-	paths  []string
-	ignore []string
-	tags   []string
-	// here, blank and asserts are the inverse of TypeAssertions and BlankAssignments
-	blank   bool
-	asserts bool
+	args    []string
+	paths   []string
+	ignore  map[string]string // Exclusions.SymbolRegexpsByPackage
+	pkgs    []string          // == Exclusions.Packages
+	tags    []string          // Tags
+	blank   bool              // == !BlankAssignments
+	asserts bool              // == !TypeAssertions
 	error   int
 }
 
@@ -76,7 +79,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -85,7 +89,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-blank", "-asserts"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{},
 			blank:   true,
 			asserts: true,
@@ -94,16 +99,38 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "foo", "bar"},
 			paths:   []string{"foo", "bar"},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
 			error:   exitCodeOk,
 		},
 		parseTestCase{
-			args:    []string{"errcheck", "-ignorepkg", "fmt,encoding/binary"},
+			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
 			paths:   []string{"."},
-			ignore:  []string{"fmt", "encoding/binary"},
+			ignore:  map[string]string{"fmt": ".*", "encoding/binary": dotStar.String()},
+			pkgs:    []string{},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignore", "fmt:[FS]?[Pp]rint*"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"fmt": "[FS]?[Pp]rint*"},
+			pkgs:    []string{},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
+			paths:   []string{"."},
+			ignore:  map[string]string{"": "[rR]ead|[wW]rite"},
+			pkgs:    []string{},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -112,7 +139,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing"},
 			paths:   []string{"."},
-			ignore:  []string{"testing"},
+			ignore:  map[string]string{},
+			pkgs:    []string{"testing"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -121,7 +149,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
 			paths:   []string{"."},
-			ignore:  []string{"testing", "foo"},
+			ignore:  map[string]string{},
+			pkgs:    []string{"testing", "foo"},
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
@@ -130,7 +159,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{"foo"},
 			blank:   false,
 			asserts: false,
@@ -139,7 +169,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo bar !baz"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -148,7 +179,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo,bar,!baz"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -157,7 +189,8 @@ func TestParseFlags(t *testing.T) {
 		parseTestCase{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
 			paths:   []string{"."},
-			ignore:  []string{},
+			ignore:  map[string]string{},
+			pkgs:    []string{},
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
@@ -177,12 +210,12 @@ func TestParseFlags(t *testing.T) {
 		return true
 	}
 
-	ignoresEqual := func(a []string, b []string) bool {
-		if len(a) != len(b) {
+	ignoresEqual := func(a map[string]*regexp.Regexp, b map[string]string) bool {
+		if (a == nil && b != nil) || (a != nil && b == nil) || (len(a) != len(b)) {
 			return false
 		}
 		for k, v := range a {
-			if v != b[k] {
+			if v.String() != b[k] {
 				return false
 			}
 		}
@@ -197,8 +230,11 @@ func TestParseFlags(t *testing.T) {
 		if !slicesEqual(p, c.paths) {
 			t.Errorf("%q: path got %q want %q", argsStr, p, c.paths)
 		}
-		if ign := checker.Exclusions.Packages; !ignoresEqual(ign, c.ignore) {
+		if ign := checker.Exclusions.SymbolRegexpsByPackage; !ignoresEqual(ign, c.ignore) {
 			t.Errorf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
+		}
+		if pkgs := checker.Exclusions.Packages; !slicesEqual(pkgs, c.pkgs) {
+			t.Errorf("%q: packages got %v want %v", argsStr, pkgs, c.pkgs)
 		}
 		if tags := checker.Tags; !slicesEqual(tags, c.tags) {
 			t.Errorf("%q: tags got %v want %v", argsStr, tags, c.tags)

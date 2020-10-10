@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"regexp"
 	"testing"
 
 	"golang.org/x/tools/go/packages"
@@ -248,7 +249,7 @@ require github.com/testlog v0.0.0
 	}
 
 	cases := []struct {
-		ignore          []string
+		ignore          map[string]*regexp.Regexp
 		numExpectedErrs int
 	}{
 		// basic case has one error
@@ -258,21 +259,21 @@ require github.com/testlog v0.0.0
 		},
 		// ignoring vendored import works
 		{
-			ignore: []string{
-				"github.com/testvendor/vendor/github.com/testlog",
+			ignore: map[string]*regexp.Regexp{
+				path.Join("github.com/testvendor/vendor/github.com/testlog"): regexp.MustCompile("Info"),
 			},
 		},
 		// non-vendored path ignores vendored import
 		{
-			ignore: []string{
-				"github.com/testlog",
+			ignore: map[string]*regexp.Regexp{
+				"github.com/testlog": regexp.MustCompile("Info"),
 			},
 		},
 	}
 
 	for i, currCase := range cases {
 		var checker Checker
-		checker.Exclusions.Packages = currCase.ignore
+		checker.Exclusions.SymbolRegexpsByPackage = currCase.ignore
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
 				"GOPATH="+tmpGopath,
