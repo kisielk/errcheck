@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"go/types"
 	"os"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"sort"
@@ -28,9 +27,11 @@ func init() {
 var (
 	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
 	ErrNoGoFiles = errors.New("package contains no go source files")
-	// DefaultExcludes is a list of symbols that are excluded from checks by default.
-	// Note that they still need to be explicitly added to checker with AddExcludes().
-	DefaultExcludes = []string{
+
+	// DefaultExcludedSymbols is a list of symbol names that are usually excluded from checks by default.
+	//
+	// Note, that they still need to be explicitly copied to Checker.Exclusions.Symbols
+	DefaultExcludedSymbols = []string{
 		// bytes
 		"(*bytes.Buffer).Write",
 		"(*bytes.Buffer).WriteByte",
@@ -123,48 +124,61 @@ func (e byName) Less(i, j int) bool {
 	return ei.Line < ej.Line
 }
 
+// Exclusions define symbols and language elements that will be not checked
+type Exclusions struct {
+
+	// Packages lists paths of excluded packages.
+	Packages []string
+
+	// SymbolRegexpsByPackage maps individual package paths to regular
+	// expressions that match symbols to be excluded.
+	//
+	// Packages whose paths appear both here and in Packages list will
+	// be excluded entirely.
+	//
+	// This is a legacy input that will be deprecated in errcheck version 2 and
+	// should not be used.
+	SymbolRegexpsByPackage map[string]*regexp.Regexp
+
+	// Symbols lists patterns that exclude individual package symbols.
+	//
+	// For example:
+	//
+	//   "fmt.Errorf"              // function
+	//   "fmt.Fprintf(os.Stderr)"  // function with set argument value
+	//   "(hash.Hash).Write"       // method
+	//
+	Symbols []string
+
+	// TestFiles excludes _test.go files.
+	TestFiles bool
+
+	// GeneratedFiles excludes generated source files.
+	//
+	// Source file is assumed to be generated if its contents
+	// match the following regular expression:
+	//
+	//   ^// Code generated .* DO NOT EDIT\\.$
+	//
+	GeneratedFiles bool
+
+	// BlankAssignments ignores assignments to blank identifier.
+	BlankAssignments bool
+
+	// TypeAssertions ignores unchecked type assertions.
+	TypeAssertions bool
+}
+
 // Checker checks that you checked errors.
 type Checker struct {
-	// Ignore is a map of package names to regular expressions. Identifiers from a package are
-	// checked against its regular expressions and if any of the expressions match the call
-	// is not checked.
-	Ignore map[string]*regexp.Regexp
-
-	// Blank, if true, means assignments to the blank identifier are also considered to be
-	// ignored errors.
-	Blank bool
-
-	// Asserts causes ignored type assertion results to also be checked.
-	Asserts bool
+	// Exclusions defines code packages, symbols, and other elements that will not be checked.
+	Exclusions Exclusions
 
 	// Tags are a list of build tags to use.
 	Tags []string
 
 	// Verbose causes extra information to be output to stdout.
 	Verbose bool
-
-	// WithoutTests disables checking of _test.go files.
-	WithoutTests bool
-
-	// WithoutGeneratedCode disables checking of files with generated code.
-	// It behaves according to the following regular expression:
-	//
-	//   ^// Code generated .* DO NOT EDIT\\.$
-	WithoutGeneratedCode bool
-
-	exclude map[string]bool
-}
-
-func NewChecker() *Checker {
-	return &Checker{exclude: map[string]bool{}}
-}
-
-// AddExcludes adds expressions to exclude from checking.
-func (c *Checker) AddExcludes(excludes []string) {
-	for _, k := range excludes {
-		c.logf("Excluding %v", k)
-		c.exclude[k] = true
-	}
 }
 
 func (c *Checker) logf(msg string, args ...interface{}) {
@@ -181,16 +195,17 @@ var loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Pack
 func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode:       packages.LoadAllSyntax,
-		Tests:      !c.WithoutTests,
+		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: []string{fmtTags(c.Tags)},
 	}
 	return loadPackages(cfg, paths...)
 }
 
 var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
+var dotStar = regexp.MustCompile(".*")
 
 func (c *Checker) shouldSkipFile(file *ast.File) bool {
-	if !c.WithoutGeneratedCode {
+	if !c.Exclusions.GeneratedFiles {
 		return false
 	}
 
@@ -205,30 +220,37 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	return false
 }
 
-var (
-	goModStatus bool
-	goModOnce   sync.Once
-)
-
-func isGoMod() bool {
-	goModOnce.Do(func() {
-		gomod, err := exec.Command("go", "env", "GOMOD").Output()
-		goModStatus = (err == nil) && strings.TrimSpace(string(gomod)) != ""
-	})
-	return goModStatus
-}
-
-// CheckPaths checks packages for errors.
+// CheckPackage checks packages for errors.
 func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 	c.logf("Checking %s", pkg.Types.Path())
 
+	excludedSymbols := map[string]bool{}
+	for _, sym := range c.Exclusions.Symbols {
+		c.logf("Excluding %v", sym)
+		excludedSymbols[sym] = true
+	}
+
+	ignore := map[string]*regexp.Regexp{}
+	// Apply SymbolRegexpsByPackage first so that if the same path appears in
+	// Packages, a more narrow regexp will be superceded by dotStar below.
+	if regexps := c.Exclusions.SymbolRegexpsByPackage; regexps != nil {
+		for pkg, re := range regexps {
+			// TODO warn if previous entry overwritten?
+			ignore[nonVendoredPkgPath(pkg)] = re
+		}
+	}
+	for _, pkg := range c.Exclusions.Packages {
+		// TODO warn if previous entry overwritten?
+		ignore[nonVendoredPkgPath(pkg)] = dotStar
+	}
+
 	v := &visitor{
 		pkg:     pkg,
-		ignore:  c.Ignore,
-		blank:   c.Blank,
-		asserts: c.Asserts,
+		ignore:  ignore,
+		blank:   !c.Exclusions.BlankAssignments,
+		asserts: !c.Exclusions.TypeAssertions,
 		lines:   make(map[string][]string),
-		exclude: c.exclude,
+		exclude: excludedSymbols,
 		errors:  []UncheckedError{},
 	}
 
@@ -239,21 +261,6 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 		ast.Walk(v, astFile)
 	}
 	return v.errors
-}
-
-// UpdateNonVendoredIgnore updates the Ignores to use non vendored paths
-func (c *Checker) UpdateNonVendoredIgnore() {
-	if isGoMod() {
-		ignore := make(map[string]*regexp.Regexp)
-		for pkg, re := range c.Ignore {
-			if nonVendoredPkg, ok := nonVendoredPkgPath(pkg); ok {
-				ignore[nonVendoredPkg] = re
-			} else {
-				ignore[pkg] = re
-			}
-		}
-		c.Ignore = ignore
-	}
 }
 
 // CheckPaths checks packages for errors.
@@ -271,8 +278,6 @@ func (c *Checker) CheckPaths(paths ...string) error {
 		work <- pkg
 	}
 	close(work)
-
-	c.UpdateNonVendoredIgnore()
 
 	var wg sync.WaitGroup
 	u := &UncheckedErrors{}
@@ -474,18 +479,8 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 
 	if obj := v.pkg.TypesInfo.Uses[id]; obj != nil {
 		if pkg := obj.Pkg(); pkg != nil {
-			if re, ok := v.ignore[pkg.Path()]; ok {
+			if re, ok := v.ignore[nonVendoredPkgPath(pkg.Path())]; ok {
 				return re.MatchString(id.Name)
-			}
-
-			// if current package being considered is vendored, check to see if it should be ignored based
-			// on the unvendored path.
-			if !isGoMod() {
-				if nonVendoredPkg, ok := nonVendoredPkgPath(pkg.Path()); ok {
-					if re, ok := v.ignore[nonVendoredPkg]; ok {
-						return re.MatchString(id.Name)
-					}
-				}
 			}
 		}
 	}
@@ -493,15 +488,15 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	return false
 }
 
-// nonVendoredPkgPath returns the unvendored version of the provided package path (or returns the provided path if it
-// does not represent a vendored path). The second return value is true if the provided package was vendored, false
-// otherwise.
-func nonVendoredPkgPath(pkgPath string) (string, bool) {
+// nonVendoredPkgPath returns the unvendored version of the provided package
+// path (or returns the provided path if it does not represent a vendored
+// path).
+func nonVendoredPkgPath(pkgPath string) string {
 	lastVendorIndex := strings.LastIndex(pkgPath, "/vendor/")
 	if lastVendorIndex == -1 {
-		return pkgPath, false
+		return pkgPath
 	}
-	return pkgPath[lastVendorIndex+len("/vendor/"):], true
+	return pkgPath[lastVendorIndex+len("/vendor/"):]
 }
 
 // errorsByArg returns a slice s such that

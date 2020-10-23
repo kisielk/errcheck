@@ -166,7 +166,7 @@ package custom
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
+		var checker Checker
 		checker.Tags = currCase.tags
 
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
@@ -272,8 +272,8 @@ require github.com/testlog v0.0.0
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
-		checker.Ignore = currCase.ignore
+		var checker Checker
+		checker.Exclusions.SymbolRegexpsByPackage = currCase.ignore
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
 				"GOPATH="+tmpGopath,
@@ -368,8 +368,8 @@ require github.com/testlog v0.0.0
 	}
 
 	for i, currCase := range cases {
-		checker := NewChecker()
-		checker.WithoutGeneratedCode = currCase.withoutGeneratedCode
+		var checker Checker
+		checker.Exclusions.GeneratedFiles = currCase.withoutGeneratedCode
 		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 			cfg.Env = append(os.Environ(),
 				"GOPATH="+tmpGopath,
@@ -404,13 +404,13 @@ func test(t *testing.T, f flags) {
 		asserts bool = f&CheckAsserts != 0
 		blank   bool = f&CheckBlank != 0
 	)
-	checker := NewChecker()
-	checker.Asserts = asserts
-	checker.Blank = blank
-	checker.AddExcludes(DefaultExcludes)
-	checker.AddExcludes([]string{
+	var checker Checker
+	checker.Exclusions.TypeAssertions = !asserts
+	checker.Exclusions.BlankAssignments = !blank
+	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
+	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
-	})
+	)
 	err := checker.CheckPaths(testPackage)
 	uerr, ok := err.(*UncheckedErrors)
 	if !ok {
