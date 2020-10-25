@@ -449,7 +449,7 @@ func test(t *testing.T, f flags) {
 		t.Errorf("got %d errors, want %d", uerr.Len(), numErrors)
 	unchecked_loop:
 		for k := range uncheckedMarkers {
-			for _, e := range uerr.Errors {
+			for _, e := range uerr.UncheckedErrors {
 				if newMarker(e) == k {
 					continue unchecked_loop
 				}
@@ -459,7 +459,7 @@ func test(t *testing.T, f flags) {
 		if blank {
 		blank_loop:
 			for k := range blankMarkers {
-				for _, e := range uerr.Errors {
+				for _, e := range uerr.UncheckedErrors {
 					if newMarker(e) == k {
 						continue blank_loop
 					}
@@ -470,7 +470,7 @@ func test(t *testing.T, f flags) {
 		if asserts {
 		assert_loop:
 			for k := range assertMarkers {
-				for _, e := range uerr.Errors {
+				for _, e := range uerr.UncheckedErrors {
 					if newMarker(e) == k {
 						continue assert_loop
 					}
@@ -480,7 +480,7 @@ func test(t *testing.T, f flags) {
 		}
 	}
 
-	for i, err := range uerr.Errors {
+	for i, err := range uerr.UncheckedErrors {
 		m := marker{err.Pos.Filename, err.Pos.Line}
 		if !uncheckedMarkers[m] && !blankMarkers[m] && !assertMarkers[m] {
 			t.Errorf("%d: unexpected error: %v", i, err)

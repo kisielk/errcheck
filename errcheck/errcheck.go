@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -76,20 +75,19 @@ type UncheckedError struct {
 
 // Result is returned from the CheckPackage function if the package contains
 // any unchecked errors.
-// Errors should be appended using the Append method, which is safe to use concurrently.
+//
+// Aggregation can be done using the Append method.
 type Result struct {
-	mu sync.Mutex
-
-	// Errors is a list of all the unchecked errors in the package.
+	// UncheckedErrors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
-	Errors []UncheckedError
+	UncheckedErrors []UncheckedError
 }
 
 type byName struct{ *Result }
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (e byName) Less(i, j int) bool {
-	ei, ej := e.Errors[i], e.Errors[j]
+	ei, ej := e.UncheckedErrors[i], e.UncheckedErrors[j]
 
 	pi, pj := ei.Pos, ej.Pos
 
@@ -106,12 +104,9 @@ func (e byName) Less(i, j int) bool {
 	return ei.Line < ej.Line
 }
 
-// Append appends errors to e. It is goroutine-safe, unlike the other methods
-// on Result. Append does not do any duplicate checking.
+// Append appends errors to e. Append does not do any duplicate checking.
 func (r *Result) Append(other *Result) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.Errors = append(r.Errors, other.Errors...)
+	r.UncheckedErrors = append(r.UncheckedErrors, other.UncheckedErrors...)
 }
 
 // Returns the unique errors that have been accumulated. Duplicates may occur
@@ -120,13 +115,13 @@ func (r *Result) Append(other *Result) {
 // This function works in place, but returns the result anyways.
 func (r *Result) Unique() *Result {
 	sort.Sort(byName{r})
-	uniq := r.Errors[:0] // compact in-place
-	for i, err := range r.Errors {
-		if i == 0 || err != r.Errors[i-1] {
+	uniq := r.UncheckedErrors[:0] // compact in-place
+	for i, err := range r.UncheckedErrors {
+		if i == 0 || err != r.UncheckedErrors[i-1] {
 			uniq = append(uniq, err)
 		}
 	}
-	r.Errors = uniq
+	r.UncheckedErrors = uniq
 	return r
 }
 
@@ -136,16 +131,12 @@ func (r *Result) Error() string {
 
 // Len is the number of elements in the collection.
 func (r *Result) Len() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.Errors)
+	return len(r.UncheckedErrors)
 }
 
 // Swap swaps the elements with indexes i and j.
 func (r *Result) Swap(i, j int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.Errors[i], r.Errors[j] = r.Errors[j], r.Errors[i]
+	r.UncheckedErrors[i], r.UncheckedErrors[j] = r.UncheckedErrors[j], r.UncheckedErrors[i]
 }
 
 // Exclusions define symbols and language elements that will be not checked
@@ -277,7 +268,7 @@ func (c *Checker) CheckPackage(pkg *packages.Package) *Result {
 		}
 		ast.Walk(v, astFile)
 	}
-	return &Result{Errors: v.errors}
+	return &Result{UncheckedErrors: v.errors}
 }
 
 // visitor implements the errcheck algorithm

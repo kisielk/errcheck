@@ -92,7 +92,7 @@ func reportResult(e *errcheck.Result) {
 	if err != nil {
 		wd = ""
 	}
-	for _, uncheckedError := range e.Errors {
+	for _, uncheckedError := range e.UncheckedErrors {
 		pos := uncheckedError.Pos.String()
 		if !abspath {
 			newPos, err := filepath.Rel(wd, pos)
