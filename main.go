@@ -155,6 +155,7 @@ func checkPaths(c *errcheck.Checker, paths ...string) (*errcheck.Result, error) 
 
 	var wg sync.WaitGroup
 	result := &errcheck.Result{}
+	mu := &sync.Mutex{}
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
 
@@ -162,7 +163,10 @@ func checkPaths(c *errcheck.Checker, paths ...string) (*errcheck.Result, error) 
 			defer wg.Done()
 			for pkg := range work {
 				logf("checking %s", pkg.Types.Path())
-				result.Append(c.CheckPackage(pkg))
+				r := c.CheckPackage(pkg)
+				mu.Lock()
+				result.Append(r)
+				mu.Unlock()
 			}
 		}()
 	}
