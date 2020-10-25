@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/packages"
@@ -165,35 +166,40 @@ package custom
 		},
 	}
 
-	for i, currCase := range cases {
-		var checker Checker
-		checker.Tags = currCase.tags
+	for _, test := range cases {
+		testName := strings.Join(test.tags, ",")
+		t.Run(testName, func(t *testing.T) {
+			var checker Checker
+			checker.Tags = test.tags
 
-		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-			cfg.Env = append(os.Environ(),
-				"GOPATH="+tmpGopath)
-			cfg.Dir = testBuildTagsDir
-			pkgs, err := packages.Load(cfg, paths...)
-			return pkgs, err
-		}
-		err := checker.CheckPaths("github.com/testbuildtags")
-
-		if currCase.numExpectedErrs == 0 {
-			if err != nil {
-				t.Errorf("Case %d: expected no errors, but got: %v", i, err)
+			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+				cfg.Env = append(os.Environ(),
+					"GOPATH="+tmpGopath)
+				cfg.Dir = testBuildTagsDir
+				pkgs, err := packages.Load(cfg, paths...)
+				return pkgs, err
 			}
-			continue
-		}
+			packages, err := checker.LoadPackages("github.com/testbuildtags")
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		uerr, ok := err.(*UncheckedErrors)
-		if !ok {
-			t.Errorf("Case %d: wrong error type returned: %v", i, err)
-			continue
-		}
+			uerr := &Result{}
+			for _, pkg := range packages {
+				uerr.Append(checker.CheckPackage(pkg))
+			}
+			uerr = uerr.Unique()
+			if test.numExpectedErrs == 0 {
+				if uerr.Len() != 0 {
+					t.Errorf("expected no errors, but got: %v", uerr)
+				}
+				return
+			}
 
-		if currCase.numExpectedErrs != len(uerr.Errors) {
-			t.Errorf("Case %d:\nExpected: %d errors\nActual:   %d errors", i, currCase.numExpectedErrs, len(uerr.Errors))
-		}
+			if test.numExpectedErrs != uerr.Len() {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			}
+		})
 	}
 }
 
@@ -271,35 +277,39 @@ require github.com/testlog v0.0.0
 		},
 	}
 
-	for i, currCase := range cases {
-		var checker Checker
-		checker.Exclusions.SymbolRegexpsByPackage = currCase.ignore
-		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-			cfg.Env = append(os.Environ(),
-				"GOPATH="+tmpGopath,
-				"GOFLAGS=-mod=vendor")
-			cfg.Dir = testVendorDir
-			pkgs, err := packages.Load(cfg, paths...)
-			return pkgs, err
-		}
-		err := checker.CheckPaths("github.com/testvendor")
-
-		if currCase.numExpectedErrs == 0 {
-			if err != nil {
-				t.Errorf("Case %d: expected no errors, but got: %v", i, err)
+	for i, test := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var checker Checker
+			checker.Exclusions.SymbolRegexpsByPackage = test.ignore
+			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+				cfg.Env = append(os.Environ(),
+					"GOPATH="+tmpGopath,
+					"GOFLAGS=-mod=vendor")
+				cfg.Dir = testVendorDir
+				pkgs, err := packages.Load(cfg, paths...)
+				return pkgs, err
 			}
-			continue
-		}
+			packages, err := checker.LoadPackages("github.com/testvendor")
+			if err != nil {
+				t.Fatal(err)
+			}
+			uerr := &Result{}
+			for _, pkg := range packages {
+				uerr.Append(checker.CheckPackage(pkg))
+			}
+			uerr = uerr.Unique()
 
-		uerr, ok := err.(*UncheckedErrors)
-		if !ok {
-			t.Errorf("Case %d: wrong error type returned: %v", i, err)
-			continue
-		}
+			if test.numExpectedErrs == 0 {
+				if uerr.Len() != 0 {
+					t.Errorf("expected no errors, but got: %v", uerr)
+				}
+				return
+			}
 
-		if currCase.numExpectedErrs != len(uerr.Errors) {
-			t.Errorf("Case %d:\nExpected: %d errors\nActual:   %d errors", i, currCase.numExpectedErrs, len(uerr.Errors))
-		}
+			if test.numExpectedErrs != uerr.Len() {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			}
+		})
 	}
 }
 
@@ -367,35 +377,39 @@ require github.com/testlog v0.0.0
 		},
 	}
 
-	for i, currCase := range cases {
-		var checker Checker
-		checker.Exclusions.GeneratedFiles = currCase.withoutGeneratedCode
-		loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-			cfg.Env = append(os.Environ(),
-				"GOPATH="+tmpGopath,
-				"GOFLAGS=-mod=vendor")
-			cfg.Dir = testVendorDir
-			pkgs, err := packages.Load(cfg, paths...)
-			return pkgs, err
-		}
-		err := checker.CheckPaths(path.Join("github.com/testvendor"))
-
-		if currCase.numExpectedErrs == 0 {
-			if err != nil {
-				t.Errorf("Case %d: expected no errors, but got: %v", i, err)
+	for i, test := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var checker Checker
+			checker.Exclusions.GeneratedFiles = test.withoutGeneratedCode
+			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+				cfg.Env = append(os.Environ(),
+					"GOPATH="+tmpGopath,
+					"GOFLAGS=-mod=vendor")
+				cfg.Dir = testVendorDir
+				pkgs, err := packages.Load(cfg, paths...)
+				return pkgs, err
 			}
-			continue
-		}
+			packages, err := checker.LoadPackages("github.com/testvendor")
+			if err != nil {
+				t.Fatal(err)
+			}
+			uerr := &Result{}
+			for _, pkg := range packages {
+				uerr.Append(checker.CheckPackage(pkg))
+			}
+			uerr = uerr.Unique()
 
-		uerr, ok := err.(*UncheckedErrors)
-		if !ok {
-			t.Errorf("Case %d: wrong error type returned: %v", i, err)
-			continue
-		}
+			if test.numExpectedErrs == 0 {
+				if uerr.Len() != 0 {
+					t.Errorf("expected no errors, but got: %v", uerr)
+				}
+				return
+			}
 
-		if currCase.numExpectedErrs != len(uerr.Errors) {
-			t.Errorf("Case %d:\nExpected: %d errors\nActual:   %d errors", i, currCase.numExpectedErrs, len(uerr.Errors))
-		}
+			if test.numExpectedErrs != uerr.Len() {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			}
+		})
 	}
 }
 
@@ -411,12 +425,11 @@ func test(t *testing.T, f flags) {
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	)
-	err := checker.CheckPaths(testPackage)
-	uerr, ok := err.(*UncheckedErrors)
-	if !ok {
-		t.Fatalf("wrong error type returned: %v", err)
+	packages, err := checker.LoadPackages(testPackage)
+	if err != nil {
+		t.Fatal(err)
 	}
-
+	uerr := &Result{}
 	numErrors := len(uncheckedMarkers)
 	if blank {
 		numErrors += len(blankMarkers)
@@ -425,8 +438,15 @@ func test(t *testing.T, f flags) {
 		numErrors += len(assertMarkers)
 	}
 
-	if len(uerr.Errors) != numErrors {
-		t.Errorf("got %d errors, want %d", len(uerr.Errors), numErrors)
+	for _, pkg := range packages {
+		err := checker.CheckPackage(pkg)
+		uerr.Append(err)
+	}
+
+	uerr = uerr.Unique()
+
+	if uerr.Len() != numErrors {
+		t.Errorf("got %d errors, want %d", uerr.Len(), numErrors)
 	unchecked_loop:
 		for k := range uncheckedMarkers {
 			for _, e := range uerr.Errors {

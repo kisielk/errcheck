@@ -9,9 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/kisielk/errcheck/errcheck"
+	"golang.org/x/tools/go/packages"
 )
 
 const (
@@ -20,9 +23,13 @@ const (
 	exitFatalError
 )
 
-var abspath bool
-
 type ignoreFlag map[string]*regexp.Regexp
+
+// global flags
+var (
+	abspath bool
+	verbose bool
+)
 
 func (f ignoreFlag) String() string {
 	pairs := make([]string, 0, len(f))
@@ -80,7 +87,7 @@ func (f *tagsFlag) Set(s string) error {
 	return nil
 }
 
-func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
+func reportResult(e *errcheck.Result) {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = ""
@@ -102,6 +109,12 @@ func reportUncheckedErrors(e *errcheck.UncheckedErrors, verbose bool) {
 	}
 }
 
+func logf(msg string, args ...interface{}) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	}
+}
+
 func mainCmd(args []string) int {
 	var checker errcheck.Checker
 	paths, err := parseFlags(&checker, args)
@@ -109,9 +122,9 @@ func mainCmd(args []string) int {
 		return err
 	}
 
-	if err := checker.CheckPaths(paths...); err != nil {
-		if e, ok := err.(*errcheck.UncheckedErrors); ok {
-			reportUncheckedErrors(e, checker.Verbose)
+	if err := checkPaths(&checker, paths...); err != nil {
+		if e, ok := err.(*errcheck.Result); ok {
+			reportResult(e)
 			return exitUncheckedError
 		} else if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
@@ -123,6 +136,42 @@ func mainCmd(args []string) int {
 	return exitCodeOk
 }
 
+func checkPaths(c *errcheck.Checker, paths ...string) error {
+	pkgs, err := c.LoadPackages(paths...)
+	if err != nil {
+		return err
+	}
+	// Check for errors in the initial packages.
+	work := make(chan *packages.Package, len(pkgs))
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
+		}
+		work <- pkg
+	}
+	close(work)
+
+	var wg sync.WaitGroup
+	u := &errcheck.Result{}
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for pkg := range work {
+				logf("checking %s", pkg.Types.Path())
+				u.Append(c.CheckPackage(pkg))
+			}
+		}()
+	}
+
+	wg.Wait()
+	if u.Len() > 0 {
+		return u.Unique()
+	}
+	return nil
+}
+
 func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
@@ -132,7 +181,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.BoolVar(&checkAsserts, "asserts", false, "if true, check for ignored type assertion results")
 	flags.BoolVar(&checker.Exclusions.TestFiles, "ignoretests", false, "if true, checking of _test.go files is disabled")
 	flags.BoolVar(&checker.Exclusions.GeneratedFiles, "ignoregenerated", false, "if true, checking of files with generated code is disabled")
-	flags.BoolVar(&checker.Verbose, "verbose", false, "produce more verbose logging")
+	flags.BoolVar(&verbose, "verbose", false, "produce more verbose logging")
 
 	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
 
