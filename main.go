@@ -117,42 +117,44 @@ func logf(msg string, args ...interface{}) {
 
 func mainCmd(args []string) int {
 	var checker errcheck.Checker
-	paths, err := parseFlags(&checker, args)
-	if err != exitCodeOk {
-		return err
+	paths, rc := parseFlags(&checker, args)
+	if rc != exitCodeOk {
+		return rc
 	}
 
-	if err := checkPaths(&checker, paths...); err != nil {
-		if e, ok := err.(*errcheck.Result); ok {
-			reportResult(e)
-			return exitUncheckedError
-		} else if err == errcheck.ErrNoGoFiles {
+	result, err := checkPaths(&checker, paths...)
+	if err != nil {
+		if err == errcheck.ErrNoGoFiles {
 			fmt.Fprintln(os.Stderr, err)
 			return exitCodeOk
 		}
 		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
 		return exitFatalError
 	}
+	if result.Len() > 0 {
+		reportResult(result)
+		return exitUncheckedError
+	}
 	return exitCodeOk
 }
 
-func checkPaths(c *errcheck.Checker, paths ...string) error {
+func checkPaths(c *errcheck.Checker, paths ...string) (*errcheck.Result, error) {
 	pkgs, err := c.LoadPackages(paths...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Check for errors in the initial packages.
 	work := make(chan *packages.Package, len(pkgs))
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
-			return fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
+			return nil, fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
 		}
 		work <- pkg
 	}
 	close(work)
 
 	var wg sync.WaitGroup
-	u := &errcheck.Result{}
+	result := &errcheck.Result{}
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
 
@@ -160,16 +162,13 @@ func checkPaths(c *errcheck.Checker, paths ...string) error {
 			defer wg.Done()
 			for pkg := range work {
 				logf("checking %s", pkg.Types.Path())
-				u.Append(c.CheckPackage(pkg))
+				result.Append(c.CheckPackage(pkg))
 			}
 		}()
 	}
 
 	wg.Wait()
-	if u.Len() > 0 {
-		return u.Unique()
-	}
-	return nil
+	return result.Unique(), nil
 }
 
 func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
