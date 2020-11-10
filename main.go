@@ -131,7 +131,7 @@ func mainCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
 		return exitFatalError
 	}
-	if result.Len() > 0 {
+	if len(result.UncheckedErrors) > 0 {
 		reportResult(result)
 		return exitUncheckedError
 	}

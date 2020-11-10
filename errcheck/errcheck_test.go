@@ -190,14 +190,14 @@ package custom
 			}
 			uerr = uerr.Unique()
 			if test.numExpectedErrs == 0 {
-				if uerr.Len() != 0 {
+				if len(uerr.UncheckedErrors) != 0 {
 					t.Errorf("expected no errors, but got: %v", uerr)
 				}
 				return
 			}
 
-			if test.numExpectedErrs != uerr.Len() {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
 			}
 		})
 	}
@@ -300,14 +300,14 @@ require github.com/testlog v0.0.0
 			uerr = uerr.Unique()
 
 			if test.numExpectedErrs == 0 {
-				if uerr.Len() != 0 {
+				if len(uerr.UncheckedErrors) != 0 {
 					t.Errorf("expected no errors, but got: %v", uerr)
 				}
 				return
 			}
 
-			if test.numExpectedErrs != uerr.Len() {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
 			}
 		})
 	}
@@ -400,14 +400,14 @@ require github.com/testlog v0.0.0
 			uerr = uerr.Unique()
 
 			if test.numExpectedErrs == 0 {
-				if uerr.Len() != 0 {
+				if len(uerr.UncheckedErrors) != 0 {
 					t.Errorf("expected no errors, but got: %v", uerr)
 				}
 				return
 			}
 
-			if test.numExpectedErrs != uerr.Len() {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, uerr.Len())
+			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
+				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
 			}
 		})
 	}
@@ -445,8 +445,8 @@ func test(t *testing.T, f flags) {
 
 	uerr = uerr.Unique()
 
-	if uerr.Len() != numErrors {
-		t.Errorf("got %d errors, want %d", uerr.Len(), numErrors)
+	if len(uerr.UncheckedErrors) != numErrors {
+		t.Errorf("got %d errors, want %d", len(uerr.UncheckedErrors), numErrors)
 	unchecked_loop:
 		for k := range uncheckedMarkers {
 			for _, e := range uerr.UncheckedErrors {

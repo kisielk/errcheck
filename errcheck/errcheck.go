@@ -86,8 +86,8 @@ type Result struct {
 type byName struct{ *Result }
 
 // Less reports whether the element with index i should sort before the element with index j.
-func (e byName) Less(i, j int) bool {
-	ei, ej := e.UncheckedErrors[i], e.UncheckedErrors[j]
+func (b byName) Less(i, j int) bool {
+	ei, ej := b.UncheckedErrors[i], b.UncheckedErrors[j]
 
 	pi, pj := ei.Pos, ej.Pos
 
@@ -102,6 +102,14 @@ func (e byName) Less(i, j int) bool {
 	}
 
 	return ei.Line < ej.Line
+}
+
+func (b byName) Swap(i, j int) {
+	b.UncheckedErrors[i], b.UncheckedErrors[j] = b.UncheckedErrors[j], b.UncheckedErrors[i]
+}
+
+func (b byName) Len() int {
+	return len(b.UncheckedErrors)
 }
 
 // Append appends errors to e. Append does not do any duplicate checking.
@@ -126,17 +134,7 @@ func (r *Result) Unique() *Result {
 }
 
 func (r *Result) Error() string {
-	return fmt.Sprintf("%d unchecked errors", r.Len())
-}
-
-// Len is the number of elements in the collection.
-func (r *Result) Len() int {
-	return len(r.UncheckedErrors)
-}
-
-// Swap swaps the elements with indexes i and j.
-func (r *Result) Swap(i, j int) {
-	r.UncheckedErrors[i], r.UncheckedErrors[j] = r.UncheckedErrors[j], r.UncheckedErrors[i]
+	return fmt.Sprintf("%d unchecked errors", len(r.UncheckedErrors))
 }
 
 // Exclusions define symbols and language elements that will be not checked
