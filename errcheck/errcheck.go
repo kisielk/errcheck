@@ -83,11 +83,11 @@ type Result struct {
 	UncheckedErrors []UncheckedError
 }
 
-type byName struct{ *Result }
+type byName []UncheckedError
 
 // Less reports whether the element with index i should sort before the element with index j.
 func (b byName) Less(i, j int) bool {
-	ei, ej := b.UncheckedErrors[i], b.UncheckedErrors[j]
+	ei, ej := b[i], b[j]
 
 	pi, pj := ei.Pos, ej.Pos
 
@@ -105,11 +105,11 @@ func (b byName) Less(i, j int) bool {
 }
 
 func (b byName) Swap(i, j int) {
-	b.UncheckedErrors[i], b.UncheckedErrors[j] = b.UncheckedErrors[j], b.UncheckedErrors[i]
+	b[i], b[j] = b[j], b[i]
 }
 
 func (b byName) Len() int {
-	return len(b.UncheckedErrors)
+	return len(b)
 }
 
 // Append appends errors to e. Append does not do any duplicate checking.
@@ -120,17 +120,18 @@ func (r *Result) Append(other *Result) {
 // Returns the unique errors that have been accumulated. Duplicates may occur
 // when a file containing an unchecked error belongs to > 1 package.
 //
-// This function works in place, but returns the result anyways.
+// The method receiver remains unmodified after the call to Unique.
 func (r *Result) Unique() *Result {
-	sort.Sort(byName{r})
-	uniq := r.UncheckedErrors[:0] // compact in-place
-	for i, err := range r.UncheckedErrors {
-		if i == 0 || err != r.UncheckedErrors[i-1] {
+	result := make([]UncheckedError, len(r.UncheckedErrors))
+	copy(result, r.UncheckedErrors)
+	sort.Sort((byName)(result))
+	uniq := result[:0] // compact in-place
+	for i, err := range result {
+		if i == 0 || err != result[i-1] {
 			uniq = append(uniq, err)
 		}
 	}
-	r.UncheckedErrors = uniq
-	return r
+	return &Result{UncheckedErrors: uniq}
 }
 
 func (r *Result) Error() string {
