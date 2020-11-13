@@ -10,10 +10,8 @@ import (
 	"go/types"
 	"os"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -75,39 +73,21 @@ type UncheckedError struct {
 	FuncName string
 }
 
-// UncheckedErrors is returned from the CheckPackage function if the package contains
+// Result is returned from the CheckPackage function if the package contains
 // any unchecked errors.
-// Errors should be appended using the Append method, which is safe to use concurrently.
-type UncheckedErrors struct {
-	mu sync.Mutex
-
-	// Errors is a list of all the unchecked errors in the package.
+//
+// Aggregation can be done using the Append method.
+type Result struct {
+	// UncheckedErrors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
-	Errors []UncheckedError
+	UncheckedErrors []UncheckedError
 }
 
-// Append appends errors to e. It is goroutine-safe.
-func (e *UncheckedErrors) Append(errors ...UncheckedError) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.Errors = append(e.Errors, errors...)
-}
-
-func (e *UncheckedErrors) Error() string {
-	return fmt.Sprintf("%d unchecked errors", len(e.Errors))
-}
-
-// Len is the number of elements in the collection.
-func (e *UncheckedErrors) Len() int { return len(e.Errors) }
-
-// Swap swaps the elements with indexes i and j.
-func (e *UncheckedErrors) Swap(i, j int) { e.Errors[i], e.Errors[j] = e.Errors[j], e.Errors[i] }
-
-type byName struct{ *UncheckedErrors }
+type byName []UncheckedError
 
 // Less reports whether the element with index i should sort before the element with index j.
-func (e byName) Less(i, j int) bool {
-	ei, ej := e.Errors[i], e.Errors[j]
+func (b byName) Less(i, j int) bool {
+	ei, ej := b[i], b[j]
 
 	pi, pj := ei.Pos, ej.Pos
 
@@ -122,6 +102,40 @@ func (e byName) Less(i, j int) bool {
 	}
 
 	return ei.Line < ej.Line
+}
+
+func (b byName) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+func (b byName) Len() int {
+	return len(b)
+}
+
+// Append appends errors to e. Append does not do any duplicate checking.
+func (r *Result) Append(other *Result) {
+	r.UncheckedErrors = append(r.UncheckedErrors, other.UncheckedErrors...)
+}
+
+// Returns the unique errors that have been accumulated. Duplicates may occur
+// when a file containing an unchecked error belongs to > 1 package.
+//
+// The method receiver remains unmodified after the call to Unique.
+func (r *Result) Unique() *Result {
+	result := make([]UncheckedError, len(r.UncheckedErrors))
+	copy(result, r.UncheckedErrors)
+	sort.Sort((byName)(result))
+	uniq := result[:0] // compact in-place
+	for i, err := range result {
+		if i == 0 || err != result[i-1] {
+			uniq = append(uniq, err)
+		}
+	}
+	return &Result{UncheckedErrors: uniq}
+}
+
+func (r *Result) Error() string {
+	return fmt.Sprintf("%d unchecked errors", len(r.UncheckedErrors))
 }
 
 // Exclusions define symbols and language elements that will be not checked
@@ -176,15 +190,6 @@ type Checker struct {
 
 	// Tags are a list of build tags to use.
 	Tags []string
-
-	// Verbose causes extra information to be output to stdout.
-	Verbose bool
-}
-
-func (c *Checker) logf(msg string, args ...interface{}) {
-	if c.Verbose {
-		fmt.Fprintf(os.Stderr, msg+"\n", args...)
-	}
 }
 
 // loadPackages is used for testing.
@@ -192,7 +197,9 @@ var loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Pack
 	return packages.Load(cfg, paths...)
 }
 
-func (c *Checker) load(paths ...string) ([]*packages.Package, error) {
+// LoadPackages loads all the packages in all the paths provided. It uses the
+// exclusions and build tags provided to by the user when loading the packages.
+func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode:       packages.LoadAllSyntax,
 		Tests:      !c.Exclusions.TestFiles,
@@ -220,13 +227,13 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 	return false
 }
 
-// CheckPackage checks packages for errors.
-func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
-	c.logf("Checking %s", pkg.Types.Path())
-
+// CheckPackage checks packages for errors that have not been checked.
+//
+// It will exclude specific errors from analysis if the user has configured
+// exclusions.
+func (c *Checker) CheckPackage(pkg *packages.Package) *Result {
 	excludedSymbols := map[string]bool{}
 	for _, sym := range c.Exclusions.Symbols {
-		c.logf("Excluding %v", sym)
 		excludedSymbols[sym] = true
 	}
 
@@ -260,53 +267,7 @@ func (c *Checker) CheckPackage(pkg *packages.Package) []UncheckedError {
 		}
 		ast.Walk(v, astFile)
 	}
-	return v.errors
-}
-
-// CheckPaths checks packages for errors.
-func (c *Checker) CheckPaths(paths ...string) error {
-	pkgs, err := c.load(paths...)
-	if err != nil {
-		return err
-	}
-	// Check for errors in the initial packages.
-	work := make(chan *packages.Package, len(pkgs))
-	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			return fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
-		}
-		work <- pkg
-	}
-	close(work)
-
-	var wg sync.WaitGroup
-	u := &UncheckedErrors{}
-	for i := 0; i < runtime.NumCPU(); i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for pkg := range work {
-				u.Append(c.CheckPackage(pkg)...)
-			}
-		}()
-	}
-
-	wg.Wait()
-	if u.Len() > 0 {
-		// Sort unchecked errors and remove duplicates. Duplicates may occur when a file
-		// containing an unchecked error belongs to > 1 package.
-		sort.Sort(byName{u})
-		uniq := u.Errors[:0] // compact in-place
-		for i, err := range u.Errors {
-			if i == 0 || err != u.Errors[i-1] {
-				uniq = append(uniq, err)
-			}
-		}
-		u.Errors = uniq
-		return u
-	}
-	return nil
+	return &Result{UncheckedErrors: v.errors}
 }
 
 // visitor implements the errcheck algorithm
