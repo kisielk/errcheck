@@ -1,8 +1,6 @@
 # errcheck
 
-errcheck is a program for checking for unchecked errors in go programs.
-
-[![Build Status](https://travis-ci.org/kisielk/errcheck.svg?branch=master)](https://travis-ci.org/kisielk/errcheck)
+errcheck is a tool for finding unchecked errors in go programs.
 
 ## Install
 
