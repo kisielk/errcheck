@@ -10,10 +10,16 @@ jobs:
   build_go111_nomod:
     name: 'go 1.11.x, GO111MODULE=off'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     env:
       GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
@@ -40,10 +46,16 @@ jobs:
   build_go112_nomod:
     name: 'go 1.12.x, GO111MODULE=off'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     env:
       GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
