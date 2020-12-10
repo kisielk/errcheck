@@ -1,0 +1,161 @@
+name: errcheck
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build_go112_nomod:
+    name: 'go 1.12.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    env:
+      GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.12.17
+    - name: Go Get
+      run: go get ./...
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go112_mod:
+    name: 'go 1.12.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.12.17
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go113_nomod:
+    name: 'go 1.13.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    env:
+      GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.13.15
+    - name: Go Get
+      run: go get ./...
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go113_mod:
+    name: 'go 1.13.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.13.15
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go114_nomod:
+    name: 'go 1.14.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    env:
+      GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.14.12
+    - name: Go Get
+      run: go get ./...
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go114_mod:
+    name: 'go 1.14.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.14.12
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go115_nomod:
+    name: 'go 1.15.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    env:
+      GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15.6
+    - name: Go Get
+      run: go get ./...
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go115_mod:
+    name: 'go 1.15.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15.6
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
