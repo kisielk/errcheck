@@ -87,7 +87,7 @@ func (f *tagsFlag) Set(s string) error {
 	return nil
 }
 
-func reportResult(e *errcheck.Result) {
+func reportResult(e errcheck.Result) {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = ""
@@ -138,16 +138,16 @@ func mainCmd(args []string) int {
 	return exitCodeOk
 }
 
-func checkPaths(c *errcheck.Checker, paths ...string) (*errcheck.Result, error) {
+func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 	pkgs, err := c.LoadPackages(paths...)
 	if err != nil {
-		return nil, err
+		return errcheck.Result{}, err
 	}
 	// Check for errors in the initial packages.
 	work := make(chan *packages.Package, len(pkgs))
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
-			return nil, fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
+			return errcheck.Result{}, fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
 		}
 		work <- pkg
 	}

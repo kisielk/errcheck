@@ -188,7 +188,7 @@ package custom
 			for _, pkg := range packages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
-			uerr = uerr.Unique()
+			*uerr = uerr.Unique()
 			if test.numExpectedErrs == 0 {
 				if len(uerr.UncheckedErrors) != 0 {
 					t.Errorf("expected no errors, but got: %v", uerr)
@@ -297,7 +297,7 @@ require github.com/testlog v0.0.0
 			for _, pkg := range packages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
-			uerr = uerr.Unique()
+			*uerr = uerr.Unique()
 
 			if test.numExpectedErrs == 0 {
 				if len(uerr.UncheckedErrors) != 0 {
@@ -393,7 +393,7 @@ require github.com/testlog v0.0.0
 			if err != nil {
 				t.Fatal(err)
 			}
-			uerr := &Result{}
+			uerr := Result{}
 			for _, pkg := range packages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
@@ -429,7 +429,7 @@ func test(t *testing.T, f flags) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uerr := &Result{}
+	uerr := Result{}
 	numErrors := len(uncheckedMarkers)
 	if blank {
 		numErrors += len(blankMarkers)

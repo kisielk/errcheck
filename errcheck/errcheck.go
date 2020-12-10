@@ -114,7 +114,7 @@ func (b byName) Len() int {
 }
 
 // Append appends errors to e. Append does not do any duplicate checking.
-func (r *Result) Append(other *Result) {
+func (r *Result) Append(other Result) {
 	r.UncheckedErrors = append(r.UncheckedErrors, other.UncheckedErrors...)
 }
 
@@ -122,7 +122,7 @@ func (r *Result) Append(other *Result) {
 // when a file containing an unchecked error belongs to > 1 package.
 //
 // The method receiver remains unmodified after the call to Unique.
-func (r *Result) Unique() *Result {
+func (r Result) Unique() Result {
 	result := make([]UncheckedError, len(r.UncheckedErrors))
 	copy(result, r.UncheckedErrors)
 	sort.Sort((byName)(result))
@@ -132,11 +132,7 @@ func (r *Result) Unique() *Result {
 			uniq = append(uniq, err)
 		}
 	}
-	return &Result{UncheckedErrors: uniq}
-}
-
-func (r *Result) Error() string {
-	return fmt.Sprintf("%d unchecked errors", len(r.UncheckedErrors))
+	return Result{UncheckedErrors: uniq}
 }
 
 // Exclusions define symbols and language elements that will be not checked
@@ -232,7 +228,7 @@ func (c *Checker) shouldSkipFile(file *ast.File) bool {
 //
 // It will exclude specific errors from analysis if the user has configured
 // exclusions.
-func (c *Checker) CheckPackage(pkg *packages.Package) *Result {
+func (c *Checker) CheckPackage(pkg *packages.Package) Result {
 	excludedSymbols := map[string]bool{}
 	for _, sym := range c.Exclusions.Symbols {
 		excludedSymbols[sym] = true
@@ -268,7 +264,7 @@ func (c *Checker) CheckPackage(pkg *packages.Package) *Result {
 		}
 		ast.Walk(v, astFile)
 	}
-	return &Result{UncheckedErrors: v.errors}
+	return Result{UncheckedErrors: v.errors}
 }
 
 // visitor implements the errcheck algorithm
