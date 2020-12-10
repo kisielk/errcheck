@@ -73,10 +73,11 @@ type UncheckedError struct {
 	FuncName string
 }
 
-// Result is returned from the CheckPackage function if the package contains
-// any unchecked errors.
+// Result is returned from the CheckPackage function, and holds all the errors
+// that were found to be unchecked in a package.
 //
-// Aggregation can be done using the Append method.
+// Aggregation can be done using the Append method for users that want to
+// combine results from multiple packages.
 type Result struct {
 	// UncheckedErrors is a list of all the unchecked errors in the package.
 	// Printing an error reports its position within the file and the contents of the line.
