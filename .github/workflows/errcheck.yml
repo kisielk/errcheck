@@ -1,0 +1,149 @@
+name: errcheck
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build_go111_nomod:
+    name: 'go 1.11.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'off'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.11
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go111_mod:
+    name: 'go 1.11.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.11
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go112_nomod:
+    name: 'go 1.12.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'off'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.12
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go112_mod:
+    name: 'go 1.12.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.12
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go113_nomod:
+    name: 'go 1.13.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'off'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go113_mod:
+    name: 'go 1.13.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go114_nomod:
+    name: 'go 1.14.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'off'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.14
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go114_mod:
+    name: 'go 1.14.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.14
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go115_nomod:
+    name: 'go 1.15.x, GO111MODULE=off'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'off'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.15
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
+  build_go115_mod:
+    name: 'go 1.15.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.15
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
