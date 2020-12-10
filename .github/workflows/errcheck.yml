@@ -86,14 +86,22 @@ jobs:
   build_go113_nomod:
     name: 'go 1.13.x, GO111MODULE=off'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     env:
       GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.13.15
+    - name: Go Get
+      run: go get ./...
     - name: Build
       run: go build -v ./...
     - name: Test
@@ -116,14 +124,22 @@ jobs:
   build_go114_nomod:
     name: 'go 1.14.x, GO111MODULE=off'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     env:
       GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.14.12
+    - name: Go Get
+      run: go get ./...
     - name: Build
       run: go build -v ./...
     - name: Test
@@ -146,14 +162,22 @@ jobs:
   build_go115_nomod:
     name: 'go 1.15.x, GO111MODULE=off'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     env:
       GO111MODULE: 'off'
+      GOPATH: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v2
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.15.6
+    - name: Go Get
+      run: go get ./...
     - name: Build
       run: go build -v ./...
     - name: Test
