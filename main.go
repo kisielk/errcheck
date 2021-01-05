@@ -201,6 +201,8 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	var excludeOnly bool
 	flags.BoolVar(&excludeOnly, "excludeonly", false, "Use only excludes from -exclude file")
 
+	flags.StringVar(&checker.Mod, "mod", "", "module download mode to use: readonly or vendor. See 'go help modules' for more.")
+
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, exitFatalError
 	}
