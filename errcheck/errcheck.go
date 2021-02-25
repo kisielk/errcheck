@@ -68,9 +68,10 @@ var (
 
 // UncheckedError indicates the position of an unchecked error return.
 type UncheckedError struct {
-	Pos      token.Position
-	Line     string
-	FuncName string
+	Pos          token.Position
+	Line         string
+	FuncName     string
+	SelectorName string
 }
 
 // Result is returned from the CheckPackage function, and holds all the errors
@@ -335,6 +336,37 @@ func (v *visitor) fullName(call *ast.CallExpr) string {
 	return fn.FullName()
 }
 
+func getSelectorName(sel *ast.SelectorExpr) string {
+	if ident, ok := sel.X.(*ast.Ident); ok {
+		return fmt.Sprintf("%s.%s", ident.Name, sel.Sel.Name)
+	}
+	if s, ok := sel.X.(*ast.SelectorExpr); ok {
+		return fmt.Sprintf("%s.%s", getSelectorName(s), sel.Sel.Name)
+	}
+
+	return ""
+}
+
+// selectorName will return a name for a called function
+// if the function is the result of a selector. Otherwise it will return
+// the empty string.
+//
+// The name is fully qualified by the import path, possible type,
+// function/method name and pointer receiver.
+//
+// For example,
+//   - for "fmt.Printf(...)" it will return "fmt.Printf"
+//   - for "base64.StdEncoding.Decode(...)" it will return "base64.StdEncoding.Decode"
+//   - for "myFunc()" it will return ""
+func (v *visitor) selectorName(call *ast.CallExpr) string {
+	sel, _, ok := v.selectorAndFunc(call)
+	if !ok {
+		return ""
+	}
+
+	return getSelectorName(sel)
+}
+
 // namesForExcludeCheck will return a list of fully-qualified function names
 // from a function call that can be used to check against the exclusion list.
 //
@@ -531,11 +563,13 @@ func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 	}
 
 	var name string
+	var sel string
 	if call != nil {
 		name = v.fullName(call)
+		sel = v.selectorName(call)
 	}
 
-	v.errors = append(v.errors, UncheckedError{pos, line, name})
+	v.errors = append(v.errors, UncheckedError{pos, line, name, sel})
 }
 
 func readfile(filename string) []string {
