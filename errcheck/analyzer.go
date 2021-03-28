@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"reflect"
 	"regexp"
 
 	"golang.org/x/tools/go/analysis"
 )
 
 var Analyzer = &analysis.Analyzer{
-	Name: "errcheck",
-	Doc:  "check for unchecked errors",
-	Run:  runAnalyzer,
+	Name:       "errcheck",
+	Doc:        "check for unchecked errors",
+	Run:        runAnalyzer,
+	ResultType: reflect.TypeOf(Result{}),
 }
 
 var (
@@ -47,6 +49,7 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 		}
 	}
 
+	var allErrors []UncheckedError
 	for _, f := range pass.Files {
 		v := &visitor{
 			typesInfo: pass.TypesInfo,
@@ -68,7 +71,8 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 			})
 		}
 
+		allErrors = append(allErrors, v.errors...)
 	}
 
-	return nil, nil
+	return Result{UncheckedErrors: allErrors}, nil
 }
