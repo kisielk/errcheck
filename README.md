@@ -36,6 +36,14 @@ takes no arguments.
 The `-blank` flag enables checking for assignments of errors to the
 blank identifier. It takes no arguments.
 
+### go/analysis
+
+The package provides `Analyzer` instance that can be used with
+[go/analysis](https://pkg.go.dev/golang.org/x/tools/go/analysis) API.
+
+Currently supported flags are `blank`, `assert`, `exclude`, and `excludeonly`.
+Just as the API itself, the analyzer is exprimental and may change in the
+future.
 
 ## Excluding functions
 
