@@ -64,10 +64,14 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 
 		ast.Walk(v, f)
 
+		// TODO have visitor report all facts and then sort out
+		// the ones we need to report based on flags. This can
+		// likely simplify the visitor code.
+
 		for _, err := range v.errors {
 			pass.Report(analysis.Diagnostic{
 				Pos:     token.Pos(int(f.Pos()) + err.Pos.Offset),
-				Message: fmt.Sprintf("unchecked error returned by %s", err.FuncName),
+				Message: "unchecked error",
 			})
 		}
 

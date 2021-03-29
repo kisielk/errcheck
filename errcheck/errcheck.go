@@ -512,6 +512,9 @@ func (v *visitor) isRecover(call *ast.CallExpr) bool {
 	return false
 }
 
+// TODO collect token.Pos and then convert them to UncheckedErrors
+// after visitor is done running. This will allow to integrate more cleanly
+// with analyzer so that we don't have to convert Position back to Pos.
 func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 	pos := v.fset.Position(position)
 	lines, ok := v.lines[pos.Filename]
