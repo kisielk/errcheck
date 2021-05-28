@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -248,38 +247,5 @@ func TestParseFlags(t *testing.T) {
 		if e != c.error {
 			t.Errorf("%q: error got %q want %q", argsStr, e, c.error)
 		}
-	}
-}
-
-func TestReadExcludes(t *testing.T) {
-	expectedExcludes := []string{
-		"hello()",
-		"world()",
-	}
-	t.Logf("expectedExcludes: %#v", expectedExcludes)
-	excludes, err := readExcludes("testdata/excludes.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("excludes: %#v", excludes)
-	if !reflect.DeepEqual(expectedExcludes, excludes) {
-		t.Fatal("excludes did not match expectedExcludes")
-	}
-}
-
-func TestReadEmptyExcludes(t *testing.T) {
-	excludes, err := readExcludes("testdata/empty_excludes.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(excludes) != 0 {
-		t.Fatalf("expected empty excludes, got %#v", excludes)
-	}
-}
-
-func TestReadExcludesMissingFile(t *testing.T) {
-	_, err := readExcludes("testdata/missing_file")
-	if err == nil {
-		t.Fatal("expected non-nil err, got nil")
 	}
 }
