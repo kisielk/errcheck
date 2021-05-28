@@ -33,6 +33,10 @@ var (
 		"fmt.Fprintf(os.Stderr)",
 		"fmt.Fprintln(os.Stderr)",
 
+		// io
+		"(*io.PipeReader).CloseWithError",
+		"(*io.PipeWriter).CloseWithError",
+
 		// math/rand
 		"math/rand.Read",
 		"(*math/rand.Rand).Read",

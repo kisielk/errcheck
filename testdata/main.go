@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	mrand "math/rand"
@@ -147,6 +148,9 @@ func main() {
 	rand.Read(nil)
 	mrand.Read(nil)
 	sha256.New().Write([]byte{})
+	pr, pw := io.Pipe()
+	pr.CloseWithError(nil)
+	pw.CloseWithError(nil)
 
 	ioutil.ReadFile("main.go") // UNCHECKED
 
