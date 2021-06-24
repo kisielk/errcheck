@@ -543,6 +543,7 @@ func readfile(filename string) []string {
 	if err != nil {
 		return nil
 	}
+	defer f.Close()
 
 	var lines []string
 	var scanner = bufio.NewScanner(f)
