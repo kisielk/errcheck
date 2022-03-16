@@ -159,3 +159,18 @@ jobs:
       run: go build -v ./...
     - name: Test
       run: go test -v ./...
+  build_go118_mod:
+    name: 'go 1.18.x, GO111MODULE=on'
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: 'on'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.18
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...
