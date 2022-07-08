@@ -1,3 +1,5 @@
+// ensure that the package keyword is not equal to file beginning
+// to test correct position calculations.
 package a
 
 import (
