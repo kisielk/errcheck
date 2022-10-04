@@ -4,6 +4,20 @@ errcheck is a program for checking for unchecked errors in go programs.
 
 ![errcheck](https://github.com/kisielk/errcheck/workflows/errcheck/badge.svg)
 
+## Legacy Software
+This tool was written many years ago and has since been subsumed by a much more
+capable tool called ![staticcheck](https://github.com/dominikh/go-tools). It is
+recommended that most users use staticcheck instead of errcheck for checking
+for unhandled errors. Staticcheck also includes other static analysis checks
+that can find bugs and defects in your Go programs.
+
+errcheck will not be developing any new features, and its implementation makes
+its checking powers limited in ways that staticcheck isn't.
+
+Please feel free to use errcheck for as long as you like, but be aware that its
+lifecycle is drawing to a close, and that better, more mature tools already
+exist.
+
 ## Install
 
     go install github.com/kisielk/errcheck@latest
