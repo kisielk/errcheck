@@ -577,6 +577,11 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		for _, spec := range stmt.Specs {
 			vspec := spec.(*ast.ValueSpec)
 
+			if len(vspec.Values) == 0 {
+				// ignore declarations w/o assignments
+				continue
+			}
+
 			var lhs []ast.Expr
 			for _, name := range vspec.Names {
 				lhs = append(lhs, ast.Expr(name))
