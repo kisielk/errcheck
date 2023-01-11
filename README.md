@@ -40,8 +40,6 @@ The `-abspath` flag prints the absolute paths to files with unchecked errors.
 
 The `-mod` flag sets the module download mode to use: `readonly` or `vendor`.
 
-
-
 ### go/analysis
 
 The package provides `Analyzer` instance that can be used with
