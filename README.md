@@ -10,6 +10,8 @@ errcheck is a program for checking for unchecked errors in go programs.
 
 errcheck requires Go 1.12 or newer, and depends on the package go/packages from the golang.org/x/tools repository.
 
+errcheck requires module support to be enabled, which is the default in Go 1.13 and later. If installing with Go 1.12 you will need to specify `GO111MODULE=on` if building within `$GOPATH`.
+
 ## Use
 
 For basic usage, just give the package path of interest as the first argument:
@@ -20,7 +22,7 @@ To check all packages beneath the current directory:
 
     errcheck ./...
 
-Or check all packages in your $GOPATH and $GOROOT:
+Or check all packages in your `$GOPATH` and `$GOROOT`:
 
     errcheck all
 
