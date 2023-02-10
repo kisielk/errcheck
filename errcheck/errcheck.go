@@ -167,7 +167,7 @@ func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
 		buildFlags = append(buildFlags, fmt.Sprintf("-mod=%s", c.Mod))
 	}
 	cfg := &packages.Config{
-		Mode:       packages.LoadAllSyntax,
+		Mode:       packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
 		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: buildFlags,
 	}
