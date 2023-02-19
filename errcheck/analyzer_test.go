@@ -15,15 +15,15 @@ func TestAnalyzer(t *testing.T) {
 
 	t.Run("check blanks", func(t *testing.T) {
 		packageDir := filepath.Join(analysistest.TestData(), "src/blank/")
-		Analyzer.Flags.Set("blank", "true")
+		_ = Analyzer.Flags.Set("blank", "true")
 		_ = analysistest.Run(t, packageDir, Analyzer)
-		Analyzer.Flags.Set("blank", "false") // reset it
+		_ = Analyzer.Flags.Set("blank", "false") // reset it
 	})
 
 	t.Run("check asserts", func(t *testing.T) {
 		packageDir := filepath.Join(analysistest.TestData(), "src/assert/")
-		Analyzer.Flags.Set("assert", "true")
+		_ = Analyzer.Flags.Set("assert", "true")
 		_ = analysistest.Run(t, packageDir, Analyzer)
-		Analyzer.Flags.Set("assert", "false") // reset it
+		_ = Analyzer.Flags.Set("assert", "false") // reset it
 	})
 }

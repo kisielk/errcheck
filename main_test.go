@@ -48,7 +48,7 @@ func TestMain(t *testing.T) {
 
 	os.Stderr = saveStderr
 	os.Stdout = saveStdout
-	os.Chdir(saveCwd)
+	_ = os.Chdir(saveCwd)
 
 	out := <-bufChannel
 
