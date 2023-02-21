@@ -39,7 +39,7 @@ func init() {
 	assertMarkers = make(map[marker]bool)
 
 	cfg := &packages.Config{
-		Mode:  packages.LoadSyntax,
+		Mode:  packages.NeedSyntax | packages.NeedTypes,
 		Tests: true,
 	}
 	pkgs, err := packages.Load(cfg, testPackage)
