@@ -1,6 +1,6 @@
 # errcheck
 
-errcheck is a program for checking for unchecked errors in go programs.
+errcheck checks unhandled errors in Go code.
 
 ![errcheck](https://github.com/kisielk/errcheck/workflows/errcheck/badge.svg)
 
