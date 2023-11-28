@@ -3,7 +3,7 @@ package errcheck
 import (
 	"bufio"
 	"bytes"
-	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -56,7 +56,7 @@ var DefaultExcludedSymbols = []string{
 func ReadExcludes(path string) ([]string, error) {
 	var excludes []string
 
-	buf, err := ioutil.ReadFile(path)
+	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

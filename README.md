@@ -64,9 +64,9 @@ the the function call is excluded only if the type of the first argument is `TYP
 
 An example of an exclude file is:
 
-    io/ioutil.ReadFile
     io.Copy(*bytes.Buffer)
     io.Copy(os.Stdout)
+    os.ReadFile
 
     // Sometimes we don't care if a HTTP request fails.
     (*net/http.Client).Do

@@ -2,7 +2,6 @@ package errcheck
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -120,7 +119,7 @@ package custom
 `
 	)
 
-	tmpGopath, err := ioutil.TempDir("", "testbuildtags")
+	tmpGopath, err := os.MkdirTemp("", "testbuildtags")
 	if err != nil {
 		t.Fatalf("unable to create testbuildtags directory: %v", err)
 	}
@@ -132,16 +131,16 @@ package custom
 		os.RemoveAll(tmpGopath)
 	}()
 
-	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "go.mod"), []byte("module github.com/testbuildtags"), 0644); err != nil {
+	if err := os.WriteFile(path.Join(testBuildTagsDir, "go.mod"), []byte("module github.com/testbuildtags"), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags go.mod: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "custom1.go"), []byte(testBuildCustom1Tag), 0644); err != nil {
+	if err := os.WriteFile(path.Join(testBuildTagsDir, "custom1.go"), []byte(testBuildCustom1Tag), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags custom1: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "custom2.go"), []byte(testBuildCustom2Tag), 0644); err != nil {
+	if err := os.WriteFile(path.Join(testBuildTagsDir, "custom2.go"), []byte(testBuildCustom2Tag), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags custom2: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testBuildTagsDir, "doc.go"), []byte(testDoc), 0644); err != nil {
+	if err := os.WriteFile(path.Join(testBuildTagsDir, "doc.go"), []byte(testDoc), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags doc: %v", err)
 	}
 
@@ -229,7 +228,7 @@ require github.com/testlog v0.0.0
 	}`
 
 	// copy testvendor directory into directory for test
-	tmpGopath, err := ioutil.TempDir("", "testvendor")
+	tmpGopath, err := os.MkdirTemp("", "testvendor")
 	if err != nil {
 		t.Fatalf("unable to create testvendor directory: %v", err)
 	}
@@ -241,16 +240,16 @@ require github.com/testlog v0.0.0
 		os.RemoveAll(tmpGopath)
 	}()
 
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor go.mod: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor main: %v", err)
 	}
 	if err := os.MkdirAll(path.Join(testVendorDir, "vendor/github.com/testlog"), 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
 		t.Fatalf("Failed to write testlog: %v", err)
 	}
 
@@ -336,7 +335,7 @@ require github.com/testlog v0.0.0
 	}`
 
 	// copy testvendor directory into directory for test
-	tmpGopath, err := ioutil.TempDir("", "testvendor")
+	tmpGopath, err := os.MkdirTemp("", "testvendor")
 	if err != nil {
 		t.Fatalf("unable to create testvendor directory: %v", err)
 	}
@@ -348,16 +347,16 @@ require github.com/testlog v0.0.0
 		os.RemoveAll(tmpGopath)
 	}()
 
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor go.mod: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor main: %v", err)
 	}
 	if err := os.MkdirAll(path.Join(testVendorDir, "vendor/github.com/testlog"), 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	if err := ioutil.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
+	if err := os.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
 		t.Fatalf("Failed to write testlog: %v", err)
 	}
 

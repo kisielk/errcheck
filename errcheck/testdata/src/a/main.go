@@ -6,9 +6,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	mrand "math/rand"
+	"os"
 )
 
 func a() error {
@@ -150,7 +150,7 @@ func main() {
 	mrand.Read(nil)
 	sha256.New().Write([]byte{})
 
-	ioutil.ReadFile("main.go") // want "unchecked error"
+	os.ReadFile("main.go") // want "unchecked error"
 
 	var emiw ErrorMakerInterfaceWrapper
 	emiw.MakeNilError() // want "unchecked error"

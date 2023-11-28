@@ -3,10 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"io/ioutil"
 	"math/rand"
 	mrand "math/rand"
-
+	"os"
 	"testing"
 )
 
@@ -84,7 +83,7 @@ func TestFunc(tt *testing.T) {
 	mrand.Read(nil)
 	sha256.New().Write([]byte{})
 
-	ioutil.ReadFile("main.go") // UNCHECKED
+	os.ReadFile("main.go") // UNCHECKED
 
 	var emiw ErrorMakerInterfaceWrapper
 	emiw.MakeNilError()
