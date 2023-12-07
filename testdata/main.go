@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	mrand "math/rand"
+	"os"
 )
 
 func a() error {
@@ -152,7 +152,7 @@ func main() {
 	pr.CloseWithError(nil)
 	pw.CloseWithError(nil)
 
-	ioutil.ReadFile("main.go") // UNCHECKED
+	os.ReadFile("main.go") // UNCHECKED
 
 	var emiw ErrorMakerInterfaceWrapper
 	emiw.MakeNilError()
