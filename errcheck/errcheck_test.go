@@ -119,17 +119,11 @@ package custom
 `
 	)
 
-	tmpGopath, err := os.MkdirTemp("", "testbuildtags")
-	if err != nil {
-		t.Fatalf("unable to create testbuildtags directory: %v", err)
-	}
+	tmpGopath := t.TempDir()
 	testBuildTagsDir := path.Join(tmpGopath, "src", "github.com/testbuildtags")
 	if err := os.MkdirAll(testBuildTagsDir, 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	defer func() {
-		os.RemoveAll(tmpGopath)
-	}()
 
 	if err := os.WriteFile(path.Join(testBuildTagsDir, "go.mod"), []byte("module github.com/testbuildtags"), 0644); err != nil {
 		t.Fatalf("Failed to write testbuildtags go.mod: %v", err)
@@ -228,17 +222,11 @@ require github.com/testlog v0.0.0
 	}`
 
 	// copy testvendor directory into directory for test
-	tmpGopath, err := os.MkdirTemp("", "testvendor")
-	if err != nil {
-		t.Fatalf("unable to create testvendor directory: %v", err)
-	}
+	tmpGopath := t.TempDir()
 	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
 	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	defer func() {
-		os.RemoveAll(tmpGopath)
-	}()
 
 	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor go.mod: %v", err)
@@ -335,17 +323,11 @@ require github.com/testlog v0.0.0
 	}`
 
 	// copy testvendor directory into directory for test
-	tmpGopath, err := os.MkdirTemp("", "testvendor")
-	if err != nil {
-		t.Fatalf("unable to create testvendor directory: %v", err)
-	}
+	tmpGopath := t.TempDir()
 	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
 	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	defer func() {
-		os.RemoveAll(tmpGopath)
-	}()
 
 	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
 		t.Fatalf("Failed to write testvendor go.mod: %v", err)
