@@ -80,7 +80,7 @@ func (r *Result) Append(other Result) {
 	r.UncheckedErrors = append(r.UncheckedErrors, other.UncheckedErrors...)
 }
 
-// Returns the unique errors that have been accumulated. Duplicates may occur
+// Unique Returns the unique errors that have been accumulated. Duplicates may occur
 // when a file containing an unchecked error belongs to > 1 package.
 //
 // The method receiver remains unmodified after the call to Unique.
@@ -338,7 +338,7 @@ func (v *visitor) selectorName(call *ast.CallExpr) string {
 // then just that function's fullName is returned.
 //
 // Otherwise, we walk through all the potentially embedded interfaces of the receiver
-// the collect a list of type-qualified function names that we will check.
+// to collect a list of type-qualified function names that we will check.
 func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	sel, fn, ok := v.selectorAndFunc(call)
 	if !ok {
@@ -351,7 +351,7 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	}
 
 	// This will be missing for functions without a receiver (like fmt.Printf),
-	// so just fall back to the the function's fullName in that case.
+	// so just fall back to the function's fullName in that case.
 	selection, ok := v.typesInfo.Selections[sel]
 	if !ok {
 		return []string{name}
@@ -420,9 +420,9 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	//     2. x.y.f()
 	var id *ast.Ident
 	switch exp := call.Fun.(type) {
-	case (*ast.Ident):
+	case *ast.Ident:
 		id = exp
-	case (*ast.SelectorExpr):
+	case *ast.SelectorExpr:
 		id = exp.Sel
 	default:
 		// eg: *ast.SliceExpr, *ast.IndexExpr
