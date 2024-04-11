@@ -80,7 +80,7 @@ func (r *Result) Append(other Result) {
 	r.UncheckedErrors = append(r.UncheckedErrors, other.UncheckedErrors...)
 }
 
-// Unique Returns the unique errors that have been accumulated. Duplicates may occur
+// Unique returns the unique errors that have been accumulated. Duplicates may occur
 // when a file containing an unchecked error belongs to > 1 package.
 //
 // The method receiver remains unmodified after the call to Unique.
