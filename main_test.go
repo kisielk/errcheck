@@ -13,7 +13,7 @@ import (
 
 var dotStar = regexp.MustCompile(".*")
 
-func TestMain(t *testing.T) {
+func TestMainFunc(t *testing.T) {
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout
 	saveCwd, err := os.Getwd()
