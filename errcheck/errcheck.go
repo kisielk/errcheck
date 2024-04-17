@@ -586,18 +586,29 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			for _, name := range vspec.Names {
 				lhs = append(lhs, ast.Expr(name))
 			}
-			v.checkAssignment(lhs, vspec.Values)
+			followed := v.checkAssignment(lhs, vspec.Values)
+			if !followed {
+				return nil
+			}
 		}
 
 	case *ast.AssignStmt:
-		v.checkAssignment(stmt.Lhs, stmt.Rhs)
+		followed := v.checkAssignment(stmt.Lhs, stmt.Rhs)
+		if !followed {
+			return nil
+		}
+
+	case *ast.TypeAssertExpr:
+		v.checkAssertExpr(stmt)
+		return nil
 
 	default:
 	}
 	return v
 }
 
-func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) {
+func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
+	followed = true
 	if len(rhs) == 1 {
 		// single value on rhs; check against lhs identifiers
 		if call, ok := rhs[0].(*ast.CallExpr); ok {
@@ -619,11 +630,11 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) {
 			}
 		} else if assert, ok := rhs[0].(*ast.TypeAssertExpr); ok {
 			if !v.asserts {
-				return
+				return false
 			}
 			if assert.Type == nil {
 				// type switch
-				return
+				return false
 			}
 			if len(lhs) < 2 {
 				// assertion result not read
@@ -632,6 +643,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) {
 				// assertion result ignored
 				v.addErrorAtPosition(id.NamePos, nil)
 			}
+			return false
 		}
 	} else {
 		// multiple value on rhs; in this case a call can't return
@@ -661,6 +673,21 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) {
 			}
 		}
 	}
+
+	return
+}
+
+func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) bool {
+	if !v.asserts {
+		return false
+	}
+	if expr.Type == nil {
+		// type switch
+		return false
+	}
+	v.addErrorAtPosition(expr.Pos(), nil)
+
+	return false
 }
 
 func isErrorType(t types.Type) bool {
