@@ -677,17 +677,15 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 	return
 }
 
-func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) bool {
+func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
 	if !v.asserts {
-		return false
+		return
 	}
 	if expr.Type == nil {
 		// type switch
-		return false
+		return
 	}
 	v.addErrorAtPosition(expr.Pos(), nil)
-
-	return false
 }
 
 func isErrorType(t types.Type) bool {
