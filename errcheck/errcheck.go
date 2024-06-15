@@ -607,16 +607,17 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	return v
 }
 
+// checkAssignment checks the assignment statement and returns a boolean value
+// indicating whether to continue checking the substructure in AssignStmt or not
 func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
-	followed = true
 	if len(rhs) == 1 {
 		// single value on rhs; check against lhs identifiers
 		if call, ok := rhs[0].(*ast.CallExpr); ok {
 			if !v.blank {
-				return
+				return true
 			}
 			if v.ignoreCall(call) {
-				return
+				return true
 			}
 			isError := v.errorsByArg(call)
 			for i := 0; i < len(lhs); i++ {
@@ -674,7 +675,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 		}
 	}
 
-	return
+	return true
 }
 
 func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
