@@ -15,3 +15,11 @@ func (x t) a() error {
 type u struct {
 	t t
 }
+
+type embedt struct {
+	t
+}
+
+type embedtalias = embedt
+
+type embedtptralias = *embedt
