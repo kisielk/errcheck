@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand"
@@ -147,7 +146,6 @@ func main() {
 	b2.Write(nil)
 	rand.Read(nil)
 	mrand.Read(nil)
-	sha256.New().Write([]byte{})
 	pr, pw := io.Pipe()
 	pr.CloseWithError(nil)
 	pw.CloseWithError(nil)

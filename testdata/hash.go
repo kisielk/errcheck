@@ -1,7 +1,13 @@
 package main
 
-import "hash/maphash"
+import (
+	"crypto/sha256"
+	"hash/maphash"
+)
 
+func ignoreHashReturns() {
+	sha256.New().Write([]byte{}) // EXCLUDED
+}
 
 func ignoreHashMapReturns() {
 	var hasher maphash.Hash
