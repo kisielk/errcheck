@@ -136,15 +136,8 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 	if err != nil {
 		return errcheck.Result{}, err
 	}
-	// Check for errors in the initial packages.
+
 	work := make(chan *packages.Package, len(pkgs))
-	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			return errcheck.Result{}, fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
-		}
-		work <- pkg
-	}
-	close(work)
 
 	var wg sync.WaitGroup
 	result := &errcheck.Result{}
@@ -163,6 +156,15 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 			}
 		}()
 	}
+
+	// Check for errors in the initial packages.
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return errcheck.Result{}, fmt.Errorf("errors while loading package %s: %v", pkg.ID, pkg.Errors)
+		}
+		work <- pkg
+	}
+	close(work)
 
 	wg.Wait()
 	return result.Unique(), nil
