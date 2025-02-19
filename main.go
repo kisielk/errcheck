@@ -121,10 +121,6 @@ func mainCmd(args []string) int {
 
 	result, err := checkPaths(&checker, paths...)
 	if err != nil {
-		if err == errcheck.ErrNoGoFiles {
-			fmt.Fprintln(os.Stderr, err)
-			return exitCodeOk
-		}
 		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
 		return exitFatalError
 	}

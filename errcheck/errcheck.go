@@ -23,7 +23,9 @@ func init() {
 }
 
 var (
-	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files
+	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files.
+	//
+	// Deprecated: this error is no longer returned by errcheck.LoadPackages.
 	ErrNoGoFiles = errors.New("package contains no go source files")
 )
 
