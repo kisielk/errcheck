@@ -164,7 +164,7 @@ var loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Pack
 // LoadPackages loads all the packages in all the paths provided. It uses the
 // exclusions and build tags provided to by the user when loading the packages.
 func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
-	buildFlags := []string{fmtTags(c.Tags)}
+	buildFlags := []string{fmt.Sprintf("-tags=%s", strings.Join(c.Tags, ","))}
 	if c.Mod != "" {
 		buildFlags = append(buildFlags, fmt.Sprintf("-mod=%s", c.Mod))
 	}
