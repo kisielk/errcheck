@@ -17,6 +17,9 @@ var DefaultExcludedSymbols = []string{
 	"(*bytes.Buffer).WriteRune",
 	"(*bytes.Buffer).WriteString",
 
+	// crypto
+	"crypto/rand.Read", // https://github.com/golang/go/issues/66821
+
 	// fmt
 	"fmt.Print",
 	"fmt.Printf",
