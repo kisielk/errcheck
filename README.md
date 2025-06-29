@@ -1,8 +1,27 @@
 # errcheck
 
-errcheck is a program for checking for unchecked errors in Go code.
+errcheck finds silently ignored errors in Go code.
 
 ![errcheck](https://github.com/kisielk/errcheck/workflows/errcheck/badge.svg)
+
+For all callables that are not in the excluded list, all returned errors must
+be either assigned to a variable or explicitly discarded by being assigned to `_`.
+
+Please note that errcheck does not do any further analysis on assigned errors.
+
+For example, it will not complain about this:
+
+```go
+err := foo()
+
+// First error is discarded
+err = bar()
+if err != nil {
+    ...
+}
+```
+
+For such analysis and more, please see [staticcheck](https://staticcheck.dev/).
 
 ## Install
 
