@@ -262,7 +262,7 @@ type visitor struct {
 // If the call does not include a selector (like if it is a plain "f()" function call)
 // then the final return value will be false.
 func (v *visitor) selectorAndFunc(call *ast.CallExpr) (*ast.SelectorExpr, *types.Func, bool) {
-	sel, ok := call.Fun.(*ast.SelectorExpr)
+	sel, ok := baseCallExpr(call.Fun).(*ast.SelectorExpr)
 	if !ok {
 		return nil, nil, false
 	}
@@ -420,14 +420,15 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	// Currently only supports simple expressions:
 	//     1. f()
 	//     2. x.y.f()
+	//     3. x.y[T]() or x.y[T1, T2]()
 	var id *ast.Ident
-	switch exp := call.Fun.(type) {
+	switch exp := baseCallExpr(call.Fun).(type) {
 	case *ast.Ident:
 		id = exp
 	case *ast.SelectorExpr:
 		id = exp.Sel
 	default:
-		// eg: *ast.SliceExpr, *ast.IndexExpr
+		// eg: *ast.SliceExpr
 	}
 
 	if id == nil {
@@ -448,6 +449,24 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	}
 
 	return false
+}
+
+// baseCallExpr returns the underlying function expression for a call. Type
+// arguments and parentheses wrap the selector/name in additional AST nodes, so
+// matching call.Fun directly would miss forms like errors.AsType[T](err).
+func baseCallExpr(fun ast.Expr) ast.Expr {
+	for {
+		switch f := fun.(type) {
+		case *ast.IndexExpr:
+			fun = f.X
+		case *ast.IndexListExpr:
+			fun = f.X
+		case *ast.ParenExpr:
+			fun = f.X
+		default:
+			return fun
+		}
+	}
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
