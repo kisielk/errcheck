@@ -27,7 +27,7 @@ For such analysis and more, please see [staticcheck](https://staticcheck.dev/).
 
     go install github.com/kisielk/errcheck@latest
 
-errcheck requires Go 1.22 or newer.
+errcheck requires Go 1.25 or newer.
 
 ## Use
 
