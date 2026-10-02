@@ -623,6 +623,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		v.checkAssertExpr(stmt)
 		return nil
 
+	case *ast.RangeStmt:
+		v.checkRangeStmt(stmt)
+
 	default:
 	}
 	return v
@@ -710,6 +713,87 @@ func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
 	v.addErrorAtPosition(expr.Pos(), nil)
 }
 
+func unwrapCall(expr ast.Expr) *ast.CallExpr {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		default:
+			if call, ok := expr.(*ast.CallExpr); ok {
+				return call
+			}
+			return nil
+		}
+	}
+}
+
+func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
+	t := v.typesInfo.TypeOf(stmt.X)
+	if t == nil {
+		return
+	}
+
+	sig, ok := maybeUnalias(t).Underlying().(*types.Signature)
+	if !ok {
+		return
+	}
+
+	// An iterator function takes a single yield function argument and returns nothing.
+	if sig.Params().Len() != 1 || sig.Results().Len() != 0 {
+		return
+	}
+
+	yieldSig, ok := maybeUnalias(sig.Params().At(0).Type()).Underlying().(*types.Signature)
+	if !ok {
+		return
+	}
+
+	// The yield function returns a single bool.
+	if yieldSig.Results().Len() != 1 {
+		return
+	}
+	resBasic, ok := yieldSig.Results().At(0).Type().Underlying().(*types.Basic)
+	if !ok || resBasic.Info()&types.IsBoolean == 0 {
+		return
+	}
+
+	call := unwrapCall(stmt.X)
+	if call != nil && v.ignoreCall(call) {
+		return
+	}
+
+	numYieldParams := yieldSig.Params().Len()
+	if numYieldParams == 0 || numYieldParams > 2 {
+		return
+	}
+
+	for i := 0; i < numYieldParams; i++ {
+		paramType := yieldSig.Params().At(i).Type()
+		if !isErrorType(paramType) {
+			continue
+		}
+
+		var expr ast.Expr
+		if i == 0 {
+			expr = stmt.Key
+		} else if i == 1 {
+			expr = stmt.Value
+		}
+
+		if expr == nil {
+			v.addErrorAtPosition(stmt.Pos(), call)
+			break
+		} else if id, ok := expr.(*ast.Ident); ok && id.Name == "_" {
+			if v.blank {
+				v.addErrorAtPosition(id.NamePos, call)
+			}
+		}
+	}
+}
+
 func isErrorType(t types.Type) bool {
-	return types.Implements(t, errorType)
+	if t == nil {
+		return false
+	}
+	return types.Implements(maybeUnalias(t), errorType)
 }
