@@ -270,7 +270,8 @@ func TestParseFlags(t *testing.T) {
 	}
 }
 
-func TestVersion(t *testing.T) {
+func captureOutput(t *testing.T, f func()) string {
+	t.Helper()
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout
 	defer func() {
@@ -294,10 +295,17 @@ func TestVersion(t *testing.T) {
 		bufChannel <- buf.String()
 	}()
 
-	exitCode := mainCmd([]string{"errcheck", "-version"})
+	f()
 	w.Close()
 
-	out := <-bufChannel
+	return <-bufChannel
+}
+
+func TestVersion(t *testing.T) {
+	var exitCode int
+	out := captureOutput(t, func() {
+		exitCode = mainCmd([]string{"errcheck", "-version"})
+	})
 
 	if exitCode != exitCodeOk {
 		t.Errorf("Exit code is %d, expected %d", exitCode, exitCodeOk)
@@ -319,33 +327,10 @@ func TestVersionCustom(t *testing.T) {
 	}()
 	version = "v1.20.0"
 
-	saveStderr := os.Stderr
-	saveStdout := os.Stdout
-	defer func() {
-		os.Stderr = saveStderr
-		os.Stdout = saveStdout
-	}()
-
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("Cannot create pipe: %v", err)
-	}
-
-	os.Stderr = w
-	os.Stdout = w
-
-	bufChannel := make(chan string)
-	go func() {
-		buf := new(bytes.Buffer)
-		_, _ = io.Copy(buf, r)
-		r.Close()
-		bufChannel <- buf.String()
-	}()
-
-	exitCode := mainCmd([]string{"errcheck", "-version"})
-	w.Close()
-
-	out := <-bufChannel
+	var exitCode int
+	out := captureOutput(t, func() {
+		exitCode = mainCmd([]string{"errcheck", "-version"})
+	})
 
 	if exitCode != exitCodeOk {
 		t.Errorf("Exit code is %d, expected %d", exitCode, exitCodeOk)
