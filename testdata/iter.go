@@ -36,14 +36,14 @@ func testIterators() {
 	for range fallibleIter() { // UNCHECKED
 	}
 
-	for _ := range fallibleIter() { // UNCHECKED
+	for _ = range fallibleIter() { // UNCHECKED
 	}
 
 	for s, _ := range fallibleIter() { // BLANK
 		_ = s
 	}
 
-	for _, _ := range fallibleIter() { // BLANK
+	for _, _ = range fallibleIter() { // BLANK
 	}
 
 	for s, err := range fallibleIter() {
@@ -57,7 +57,7 @@ func testIterators() {
 	for range singleErrIter() { // UNCHECKED
 	}
 
-	for _ := range singleErrIter() { // BLANK
+	for _ = range singleErrIter() { // BLANK
 	}
 
 	for err := range singleErrIter() {
