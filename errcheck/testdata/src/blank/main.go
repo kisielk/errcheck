@@ -36,7 +36,7 @@ func main() {
 	}
 }
 
-// ISSUE230: a type conversion to a type that happens to implement error
+// https://github.com/kisielk/errcheck/issues/230: a type conversion to a type that happens to implement error
 // (e.g. as a compile-time interface satisfaction check) must not be treated
 // as an unchecked error return - it isn't a function call at all.
 type convError struct{}

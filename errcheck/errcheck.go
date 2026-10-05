@@ -484,13 +484,14 @@ func nonVendoredPkgPath(pkgPath string) string {
 // len(s) == number of return types of call
 // s[i] == true iff return type at position i from left is an error type
 func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
-	// ISSUE230_FIX_MARKER: call.Fun may denote a type rather than a
+	// call.Fun may denote a type rather than a
 	// function/method value, e.g. in a type conversion such as
 	// (*T)(x). Go's AST represents conversions as CallExpr just like
 	// real calls, but a conversion isn't a call and can't itself
 	// "return" an error - even when T happens to implement the error
 	// interface (as in `var _ error = (*T)(nil)`, a common compile-time
 	// interface-satisfaction check).
+	// See https://github.com/kisielk/errcheck/issues/230
 	if v.typesInfo.Types[call.Fun].IsType() {
 		return []bool{false}
 	}
