@@ -1,6 +1,9 @@
 package blank
 
-import "fmt"
+import (
+	"fmt"
+	"iter"
+)
 
 func a() error {
 	return nil
@@ -12,6 +15,10 @@ func b() (string, error) {
 
 func c() string {
 	return ""
+}
+
+func fallibleSeq() iter.Seq2[string, error] {
+	return nil
 }
 
 func main() {
@@ -33,6 +40,18 @@ func main() {
 	{
 		var r, _ = b() // want "unchecked error"
 		fmt.Printf("r = %v\n", r)
+	}
+
+	for s := range fallibleSeq() { // want "unchecked error"
+		_ = s
+	}
+
+	for s, _ := range fallibleSeq() { // want "unchecked error"
+		_ = s
+	}
+
+	for s, err := range fallibleSeq() {
+		_, _ = s, err
 	}
 }
 
