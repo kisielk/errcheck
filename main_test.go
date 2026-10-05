@@ -195,6 +195,26 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
+		parseTestCase{
+			args:    []string{"errcheck", "-version"},
+			paths:   nil,
+			ignore:  map[string]string{},
+			pkgs:    []string{},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
+		parseTestCase{
+			args:    []string{"errcheck", "-version", "foo"},
+			paths:   nil,
+			ignore:  map[string]string{},
+			pkgs:    []string{},
+			tags:    []string{},
+			blank:   false,
+			asserts: false,
+			error:   exitCodeOk,
+		},
 	}
 
 	slicesEqual := func(a, b []string) bool {
@@ -247,5 +267,77 @@ func TestParseFlags(t *testing.T) {
 		if e != c.error {
 			t.Errorf("%q: error got %q want %q", argsStr, e, c.error)
 		}
+	}
+}
+
+func captureOutput(t *testing.T, f func()) string {
+	t.Helper()
+	saveStderr := os.Stderr
+	saveStdout := os.Stdout
+	defer func() {
+		os.Stderr = saveStderr
+		os.Stdout = saveStdout
+	}()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Cannot create pipe: %v", err)
+	}
+
+	os.Stderr = w
+	os.Stdout = w
+
+	bufChannel := make(chan string)
+	go func() {
+		buf := new(bytes.Buffer)
+		_, _ = io.Copy(buf, r)
+		r.Close()
+		bufChannel <- buf.String()
+	}()
+
+	f()
+	w.Close()
+
+	return <-bufChannel
+}
+
+func TestVersion(t *testing.T) {
+	var exitCode int
+	out := captureOutput(t, func() {
+		exitCode = mainCmd([]string{"errcheck", "-version"})
+	})
+
+	if exitCode != exitCodeOk {
+		t.Errorf("Exit code is %d, expected %d", exitCode, exitCodeOk)
+	}
+
+	expectedPrefix := "errcheck "
+	if !strings.HasPrefix(out, expectedPrefix) {
+		t.Errorf("Output %q does not start with %q", out, expectedPrefix)
+	}
+	if !strings.HasSuffix(out, "\n") {
+		t.Errorf("Output %q does not end with newline", out)
+	}
+}
+
+func TestVersionCustom(t *testing.T) {
+	oldVersion := version
+	defer func() {
+		version = oldVersion
+	}()
+	version = "v1.20.0"
+
+	var exitCode int
+	out := captureOutput(t, func() {
+		exitCode = mainCmd([]string{"errcheck", "-version"})
+	})
+
+	if exitCode != exitCodeOk {
+		t.Errorf("Exit code is %d, expected %d", exitCode, exitCodeOk)
+	}
+
+	expected := "errcheck v1.20.0\n"
+	if out != expected {
+		t.Errorf("Output is %q, expected %q", out, expected)
 	}
 }

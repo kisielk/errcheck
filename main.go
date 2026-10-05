@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -21,6 +22,20 @@ const (
 )
 
 type ignoreFlag map[string]*regexp.Regexp
+
+// version can be set at link time to override the version reported by errcheck
+// (for example: -ldflags "-X main.version=v1.20.0").
+var version string
+
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "(devel)"
+}
 
 // global flags
 var (
@@ -118,6 +133,10 @@ func mainCmd(args []string) int {
 	if rc != exitCodeOk {
 		return rc
 	}
+	if paths == nil {
+		fmt.Printf("errcheck %s\n", getVersion())
+		return exitCodeOk
+	}
 
 	result, err := checkPaths(&checker, paths...)
 	if err != nil {
@@ -171,7 +190,7 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
-	var checkAsserts, checkBlanks bool
+	var checkAsserts, checkBlanks, showVersion bool
 
 	flags.BoolVar(&checkBlanks, "blank", false, "if true, check for errors assigned to blank identifier")
 	flags.BoolVar(&checkAsserts, "asserts", false, "if true, check for ignored type assertion results")
@@ -180,6 +199,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.BoolVar(&verbose, "verbose", false, "produce more verbose logging")
 
 	flags.BoolVar(&abspath, "abspath", false, "print absolute paths to files")
+	flags.BoolVar(&showVersion, "version", false, "print version and exit")
 
 	tags := tagsFlag{}
 	flags.Var(&tags, "tags", "comma or space-separated list of build tags to include")
@@ -224,6 +244,10 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	}
 
 	checker.Exclusions.SymbolRegexpsByPackage = ignore
+
+	if showVersion {
+		return nil, exitCodeOk
+	}
 
 	paths := flags.Args()
 	if len(paths) == 0 {
