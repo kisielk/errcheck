@@ -58,6 +58,8 @@ blank identifier. It takes no arguments.
 The `-abspath` flag prints the absolute paths to files with unchecked errors.
 
 The `-mod` flag sets the module download mode to use: `readonly` or `vendor`.
+ 
+The `-version` flag prints the version of errcheck and exits.
 
 ### go/analysis
 
