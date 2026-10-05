@@ -56,7 +56,7 @@ func TestMainFunc(t *testing.T) {
 		t.Errorf("Exit code is %d, expected %d", exitCode, exitUncheckedError)
 	}
 
-	expectUnchecked := 29
+	expectUnchecked := 34
 	if got := strings.Count(out, "UNCHECKED"); got != expectUnchecked {
 		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
 	}

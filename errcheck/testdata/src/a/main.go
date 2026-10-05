@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"iter"
 	"math/rand"
 	mrand "math/rand"
 	"os"
@@ -61,6 +62,10 @@ func (e *MyPointerError) Error() string {
 func customPointerError() *MyPointerError {
 	e := MyPointerError("an error occurred")
 	return &e
+}
+
+func fallibleSeq() iter.Seq2[string, error] {
+	return nil
 }
 
 func customPointerErrorTuple() (int, *MyPointerError) {
@@ -167,4 +172,17 @@ func main() {
 
 	var emiw ErrorMakerInterfaceWrapper
 	emiw.MakeNilError() // want "unchecked error"
+
+	// Iterators
+	for s := range fallibleSeq() { // want "unchecked error"
+		_ = s
+	}
+	for range fallibleSeq() { // want "unchecked error"
+	}
+	for s, _ := range fallibleSeq() { // ok, assigned to blank
+		_ = s
+	}
+	for s, err := range fallibleSeq() {
+		_, _ = s, err
+	}
 }
