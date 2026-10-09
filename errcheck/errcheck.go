@@ -416,6 +416,10 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
+	if v.isErrorsAsType(call) {
+		return true
+	}
+
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -467,6 +471,37 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 			return fun
 		}
 	}
+}
+
+// isErrorsAsType reports whether call is a call to errors.AsType.
+func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
+	if call == nil || call.Fun == nil {
+		return false
+	}
+	sel, ok := baseCallExpr(call.Fun).(*ast.SelectorExpr)
+	if !ok || sel == nil || sel.Sel == nil {
+		return false
+	}
+	if sel.Sel.Name != "AsType" {
+		return false
+	}
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok || pkgIdent == nil {
+		return false
+	}
+	if v.typesInfo != nil {
+		if fn, ok := v.typesInfo.ObjectOf(sel.Sel).(*types.Func); ok {
+			if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
+				return true
+			}
+		}
+		if pkgName, ok := v.typesInfo.Uses[pkgIdent].(*types.PkgName); ok {
+			if pkgName.Imported() != nil && nonVendoredPkgPath(pkgName.Imported().Path()) == "errors" {
+				return true
+			}
+		}
+	}
+	return pkgIdent.Name == "errors"
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
@@ -663,7 +698,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				if id, ok := lhs[i].(*ast.Ident); ok {
 					// We shortcut calls to recover() because errorsByArg can't
 					// check its return types for errors since it returns interface{}.
-					if id.Name == "_" && (v.isRecover(call) || isError[i]) {
+					if id.Name == "_" && (v.isRecover(call) || (i < len(isError) && isError[i])) {
 						v.addErrorAtPosition(id.NamePos, call)
 					}
 				}
@@ -699,7 +734,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 		// multiple value on rhs; in this case a call can't return
 		// multiple values. Assume len(lhs) == len(rhs)
 		for i := 0; i < len(lhs); i++ {
-			if id, ok := lhs[i].(*ast.Ident); ok {
+			if id, ok := lhs[i].(*ast.Ident); ok && i < len(rhs) {
 				if call, ok := rhs[i].(*ast.CallExpr); ok {
 					if !v.blank {
 						continue
