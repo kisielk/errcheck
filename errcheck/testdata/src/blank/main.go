@@ -53,6 +53,25 @@ func main() {
 	for s, err := range fallibleSeq() {
 		_, _ = s, err
 	}
+
+	errChan := make(chan error)
+	intChan := make(chan int)
+
+	<-errChan          // want "unchecked error"
+	_ = <-errChan      // want "unchecked error"
+	_, ok := <-errChan // want "unchecked error"
+	_ = ok
+	var _ = <-errChan  // want "unchecked error"
+
+	errVal := <-errChan
+	_ = errVal
+	errVal2, _ := <-errChan
+	_ = errVal2
+
+	<-intChan
+	_ = <-intChan
+	_, ok2 := <-intChan
+	_ = ok2
 }
 
 // https://github.com/kisielk/errcheck/issues/230: a type conversion to a type that happens to implement error
