@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -149,6 +150,9 @@ func main() {
 	pr, pw := io.Pipe()
 	pr.CloseWithError(nil)
 	pw.CloseWithError(nil)
+	var dummyErr error
+	errors.AsType[MyError](dummyErr)
+	_, _ = errors.AsType[MyError](dummyErr)
 
 	os.ReadFile("main.go") // UNCHECKED
 

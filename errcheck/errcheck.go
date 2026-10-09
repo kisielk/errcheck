@@ -416,6 +416,10 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
+	if v.isErrorsAsType(call) {
+		return true
+	}
+
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -467,6 +471,31 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 			return fun
 		}
 	}
+}
+
+// isErrorsAsType reports whether call is a call to errors.AsType.
+func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
+	if v.typesInfo == nil {
+		return false
+	}
+	var id *ast.Ident
+	switch exp := baseCallExpr(call.Fun).(type) {
+	case *ast.Ident:
+		id = exp
+	case *ast.SelectorExpr:
+		id = exp.Sel
+	default:
+		return false
+	}
+	if id == nil {
+		return false
+	}
+	if fn, ok := v.typesInfo.ObjectOf(id).(*types.Func); ok {
+		if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
+			return true
+		}
+	}
+	return false
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
