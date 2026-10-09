@@ -592,6 +592,10 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			if !v.ignoreCall(call) && v.callReturnsError(call) {
 				v.addErrorAtPosition(call.Lparen, call)
 			}
+		} else if unary := unwrapUnary(stmt.X); unary != nil && unary.Op == token.ARROW {
+			if v.receiveReturnsError(unary) {
+				v.addErrorAtPosition(unary.OpPos, nil)
+			}
 		}
 	case *ast.GoStmt:
 		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
@@ -680,6 +684,16 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				v.addErrorAtPosition(id.NamePos, nil)
 			}
 			return false
+		} else if unary := unwrapUnary(rhs[0]); unary != nil && unary.Op == token.ARROW {
+			if !v.blank {
+				return true
+			}
+			if len(lhs) >= 1 && v.receiveReturnsError(unary) {
+				if id, ok := lhs[0].(*ast.Ident); ok && id.Name == "_" {
+					v.addErrorAtPosition(id.NamePos, nil)
+				}
+			}
+			return true
 		}
 	} else {
 		// multiple value on rhs; in this case a call can't return
@@ -705,6 +719,13 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 						continue
 					}
 					v.addErrorAtPosition(id.NamePos, nil)
+				} else if unary := unwrapUnary(rhs[i]); unary != nil && unary.Op == token.ARROW {
+					if !v.blank {
+						continue
+					}
+					if id.Name == "_" && v.receiveReturnsError(unary) {
+						v.addErrorAtPosition(id.NamePos, nil)
+					}
 				}
 			}
 		}
@@ -736,6 +757,50 @@ func unwrapCall(expr ast.Expr) *ast.CallExpr {
 			return nil
 		}
 	}
+}
+
+func unwrapUnary(expr ast.Expr) *ast.UnaryExpr {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		default:
+			if unary, ok := expr.(*ast.UnaryExpr); ok {
+				return unary
+			}
+			return nil
+		}
+	}
+}
+
+func unwrapExpr(expr ast.Expr) ast.Expr {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		default:
+			return expr
+		}
+	}
+}
+
+func (v *visitor) receiveReturnsError(unary *ast.UnaryExpr) bool {
+	if unary.Op != token.ARROW {
+		return false
+	}
+	expr := unwrapExpr(unary.X)
+	t := v.typesInfo.TypeOf(expr)
+	if t == nil {
+		t = v.typesInfo.TypeOf(unary.X)
+		if t == nil {
+			return false
+		}
+	}
+	ch, ok := maybeUnalias(t).Underlying().(*types.Chan)
+	if !ok {
+		return false
+	}
+	return isErrorType(ch.Elem())
 }
 
 func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {

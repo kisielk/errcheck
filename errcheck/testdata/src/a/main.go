@@ -185,4 +185,38 @@ func main() {
 	for s, err := range fallibleSeq() {
 		_, _ = s, err
 	}
+
+	// Channel receives
+	errChan := make(chan error)
+	customErrChan := make(chan MyError)
+	intChan := make(chan int)
+
+	<-errChan       // want "unchecked error"
+	(<-errChan)     // want "unchecked error"
+	<-customErrChan // want "unchecked error"
+	<-intChan
+
+	errVal := <-errChan
+	_ = errVal
+	errVal2, ok := <-errChan
+	_, _ = errVal2, ok
+	_, ok = <-errChan
+	_ = <-errChan
+	errVal3, _ := <-errChan
+	_ = errVal3
+
+	intVal := <-intChan
+	_ = intVal
+	_ = <-intChan
+	_, ok = <-intChan
+
+	select {
+	case <-errChan: // want "unchecked error"
+	case e := <-errChan:
+		_ = e
+	case _, ok := <-errChan:
+		_ = ok
+	case <-intChan:
+	default:
+	}
 }

@@ -573,3 +573,94 @@ func test(t *testing.T, f flags) {
 		}
 	}
 }
+
+func TestChannelReceive(t *testing.T) {
+	const testGoMod = `module chantest
+
+go 1.18
+`
+	const testMain = `package main
+
+type CustomError string
+
+func (e CustomError) Error() string { return string(e) }
+
+func main() {
+	errChan := make(chan error)
+	customErrChan := make(chan CustomError)
+	intChan := make(chan int)
+
+	// Standalone receive expressions (discarded error)
+	<-errChan
+	<-customErrChan
+
+	// Assigned receives (error used)
+	err := <-errChan
+	_ = err
+	customErr := <-customErrChan
+	_ = customErr
+
+	// Blank assignments
+	_ = <-errChan
+	_, ok := <-errChan
+	_ = ok
+
+	// Non-error channels
+	<-intChan
+	v := <-intChan
+	_ = v
+	_ = <-intChan
+	_, ok2 := <-intChan
+	_ = ok2
+}
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(testGoMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(testMain), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origLoadPackages := loadPackages
+	t.Cleanup(func() { loadPackages = origLoadPackages })
+
+	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+		cfg.Dir = tmpDir
+		return packages.Load(cfg, paths...)
+	}
+
+	t.Run("default exclusions without blank checks", func(t *testing.T) {
+		var checker Checker
+		checker.Exclusions.BlankAssignments = true // ignore assignments to _
+		pkgs, err := checker.LoadPackages("chantest")
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := Result{}
+		for _, pkg := range pkgs {
+			result.Append(checker.CheckPackage(pkg))
+		}
+		result = result.Unique()
+		if len(result.UncheckedErrors) != 2 {
+			t.Errorf("expected 2 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
+		}
+	})
+
+	t.Run("with blank checks enabled", func(t *testing.T) {
+		var checker Checker
+		checker.Exclusions.BlankAssignments = false // check assignments to _
+		pkgs, err := checker.LoadPackages("chantest")
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := Result{}
+		for _, pkg := range pkgs {
+			result.Append(checker.CheckPackage(pkg))
+		}
+		result = result.Unique()
+		if len(result.UncheckedErrors) != 4 {
+			t.Errorf("expected 4 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
+		}
+	})
+}
