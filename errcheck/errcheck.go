@@ -475,27 +475,33 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 
 // isErrorsAsType reports whether call is a call to errors.AsType.
 func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
-	if v.typesInfo == nil {
+	if call == nil || call.Fun == nil {
 		return false
 	}
-	var id *ast.Ident
-	switch exp := baseCallExpr(call.Fun).(type) {
-	case *ast.Ident:
-		id = exp
-	case *ast.SelectorExpr:
-		id = exp.Sel
-	default:
+	sel, ok := baseCallExpr(call.Fun).(*ast.SelectorExpr)
+	if !ok || sel == nil || sel.Sel == nil {
 		return false
 	}
-	if id == nil {
+	if sel.Sel.Name != "AsType" {
 		return false
 	}
-	if fn, ok := v.typesInfo.ObjectOf(id).(*types.Func); ok {
-		if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
-			return true
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok || pkgIdent == nil {
+		return false
+	}
+	if v.typesInfo != nil {
+		if fn, ok := v.typesInfo.ObjectOf(sel.Sel).(*types.Func); ok {
+			if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
+				return true
+			}
+		}
+		if pkgName, ok := v.typesInfo.Uses[pkgIdent].(*types.PkgName); ok {
+			if pkgName.Imported() != nil && nonVendoredPkgPath(pkgName.Imported().Path()) == "errors" {
+				return true
+			}
 		}
 	}
-	return false
+	return pkgIdent.Name == "errors"
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
@@ -688,7 +694,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				if id, ok := lhs[i].(*ast.Ident); ok {
 					// We shortcut calls to recover() because errorsByArg can't
 					// check its return types for errors since it returns interface{}.
-					if id.Name == "_" && (v.isRecover(call) || isError[i]) {
+					if id.Name == "_" && (v.isRecover(call) || (i < len(isError) && isError[i])) {
 						v.addErrorAtPosition(id.NamePos, call)
 					}
 				}
@@ -714,7 +720,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 		// multiple value on rhs; in this case a call can't return
 		// multiple values. Assume len(lhs) == len(rhs)
 		for i := 0; i < len(lhs); i++ {
-			if id, ok := lhs[i].(*ast.Ident); ok {
+			if id, ok := lhs[i].(*ast.Ident); ok && i < len(rhs) {
 				if call, ok := rhs[i].(*ast.CallExpr); ok {
 					if !v.blank {
 						continue

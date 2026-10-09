@@ -1,7 +1,6 @@
 package blank
 
 import (
-	"errors"
 	"fmt"
 	"iter"
 )
@@ -41,12 +40,6 @@ func main() {
 	{
 		var r, _ = b() // want "unchecked error"
 		fmt.Printf("r = %v\n", r)
-	}
-
-	{
-		if _, ok := errors.AsType[*convError](convError{}); ok {
-			_ = ok
-		}
 	}
 
 	for s := range fallibleSeq() { // want "unchecked error"

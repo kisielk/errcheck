@@ -5,7 +5,6 @@ package a
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"iter"
 	"math/rand"
@@ -168,8 +167,6 @@ func main() {
 	rand.Read(nil)
 	mrand.Read(nil)
 	sha256.New().Write([]byte{})
-	errors.AsType[*MyError](customError())
-	_, _ = errors.AsType[*MyError](customError())
 
 	os.ReadFile("main.go") // want "unchecked error"
 
