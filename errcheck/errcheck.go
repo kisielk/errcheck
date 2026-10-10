@@ -3,7 +3,6 @@ package errcheck
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -21,13 +20,6 @@ var errorType *types.Interface
 func init() {
 	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 }
-
-var (
-	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files.
-	//
-	// Deprecated: this error is no longer returned by errcheck.LoadPackages.
-	ErrNoGoFiles = errors.New("package contains no go source files")
-)
 
 // UncheckedError indicates the position of an unchecked error return.
 type UncheckedError struct {
@@ -172,8 +164,31 @@ func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
 		Mode:       packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
 		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: buildFlags,
+		Env:        filterEnv(os.Environ()),
 	}
 	return loadPackages(cfg, paths...)
+}
+
+func filterEnv(env []string) []string {
+	var filtered []string
+	for _, e := range env {
+		if strings.HasPrefix(e, "GODEBUG=") {
+			godebug := e[len("GODEBUG="):]
+			parts := strings.Split(godebug, ",")
+			var filteredParts []string
+			for _, p := range parts {
+				if p != "gotypesalias=0" {
+					filteredParts = append(filteredParts, p)
+				}
+			}
+			if len(filteredParts) > 0 {
+				filtered = append(filtered, "GODEBUG="+strings.Join(filteredParts, ","))
+			}
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
 }
 
 var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
@@ -610,7 +625,9 @@ func readfile(filename string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
 
 	var lines []string
 	var scanner = bufio.NewScanner(f)

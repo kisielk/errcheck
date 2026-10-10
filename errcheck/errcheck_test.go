@@ -166,19 +166,19 @@ package custom
 			checker.Tags = test.tags
 
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
+				cfg.Env = append(filterEnv(os.Environ()),
 					"GOPATH="+tmpGopath)
 				cfg.Dir = testBuildTagsDir
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			packages, err := checker.LoadPackages("github.com/testbuildtags")
+			loadedPackages, err := checker.LoadPackages("github.com/testbuildtags")
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			uerr := &Result{}
-			for _, pkg := range packages {
+			for _, pkg := range loadedPackages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
 			*uerr = uerr.Unique()
@@ -354,19 +354,19 @@ require github.com/testlog v0.0.0
 			var checker Checker
 			checker.Exclusions.SymbolRegexpsByPackage = test.ignore
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
+				cfg.Env = append(filterEnv(os.Environ()),
 					"GOPATH="+tmpGopath,
 					"GOFLAGS=-mod=vendor")
 				cfg.Dir = testVendorDir
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			packages, err := checker.LoadPackages("github.com/testvendor")
+			loadedPackages, err := checker.LoadPackages("github.com/testvendor")
 			if err != nil {
 				t.Fatal(err)
 			}
 			uerr := &Result{}
-			for _, pkg := range packages {
+			for _, pkg := range loadedPackages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
 			*uerr = uerr.Unique()
@@ -461,7 +461,7 @@ require github.com/testlog v0.0.0
 				checker.Mod = "vendor"
 			}
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
+				cfg.Env = append(filterEnv(os.Environ()),
 					"GOPATH="+tmpGopath)
 
 				if !test.withModVendor {
@@ -472,12 +472,12 @@ require github.com/testlog v0.0.0
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			packages, err := checker.LoadPackages("github.com/testvendor")
+			loadedPackages, err := checker.LoadPackages("github.com/testvendor")
 			if err != nil {
 				t.Fatal(err)
 			}
 			uerr := Result{}
-			for _, pkg := range packages {
+			for _, pkg := range loadedPackages {
 				uerr.Append(checker.CheckPackage(pkg))
 			}
 			uerr = uerr.Unique()
@@ -508,7 +508,7 @@ func test(t *testing.T, f flags) {
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	)
-	packages, err := checker.LoadPackages(testPackage)
+	loadedPackages, err := checker.LoadPackages(testPackage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +521,7 @@ func test(t *testing.T, f flags) {
 		numErrors += len(assertMarkers)
 	}
 
-	for _, pkg := range packages {
+	for _, pkg := range loadedPackages {
 		err := checker.CheckPackage(pkg)
 		uerr.Append(err)
 	}

@@ -123,7 +123,7 @@ func reportResult(e errcheck.Result) {
 
 func logf(msg string, args ...interface{}) {
 	if verbose {
-		fmt.Fprintf(os.Stderr, msg+"\n", args...)
+		_, _ = fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	}
 }
 
@@ -140,7 +140,7 @@ func mainCmd(args []string) int {
 
 	result, err := checkPaths(&checker, paths...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "error: failed to check packages: %s\n", err)
 		return exitFatalError
 	}
 	if len(result.UncheckedErrors) > 0 {
@@ -187,6 +187,8 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 	return result.Unique(), nil
 }
 
+// parseFlags parses command-line flags from args, setting them on checker.
+// It returns any remaining arguments and exit code.
 func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
@@ -230,7 +232,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	if excludeFile != "" {
 		excludes, err := errcheck.ReadExcludes(excludeFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
 			return nil, exitFatalError
 		}
 		checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, excludes...)
