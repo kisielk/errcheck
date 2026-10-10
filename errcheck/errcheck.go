@@ -359,6 +359,20 @@ func (v *visitor) selectorName(call *ast.CallExpr) string {
 func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	sel, fn, ok := v.selectorAndFunc(call)
 	if !ok {
+		// The call may still be to a package-level function reached
+		// through a plain, unqualified identifier -- for example,
+		// calling "FirstFunc()" from within the same package that
+		// declares it. There's no selector in that case, but the
+		// function can still be resolved directly and its
+		// fully-qualified name computed for exclude matching, the
+		// same way it would be if called as "pkg.FirstFunc()".
+		if ident, ok := baseCallExpr(call.Fun).(*ast.Ident); ok {
+			if fn, ok := v.typesInfo.ObjectOf(ident).(*types.Func); ok {
+				if name := fn.FullName(); name != "" {
+					return []string{name}
+				}
+			}
+		}
 		return nil
 	}
 
