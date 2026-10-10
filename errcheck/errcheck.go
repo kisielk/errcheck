@@ -3,7 +3,6 @@ package errcheck
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -21,13 +20,6 @@ var errorType *types.Interface
 func init() {
 	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 }
-
-var (
-	// ErrNoGoFiles is returned when CheckPackage is run on a package with no Go source files.
-	//
-	// Deprecated: this error is no longer returned by errcheck.LoadPackages.
-	ErrNoGoFiles = errors.New("package contains no go source files")
-)
 
 // UncheckedError indicates the position of an unchecked error return.
 type UncheckedError struct {
@@ -172,8 +164,31 @@ func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
 		Mode:       packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
 		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: buildFlags,
+		Env:        filterEnv(os.Environ()),
 	}
 	return loadPackages(cfg, paths...)
+}
+
+func filterEnv(env []string) []string {
+	var filtered []string
+	for _, e := range env {
+		if strings.HasPrefix(e, "GODEBUG=") {
+			godebug := e[len("GODEBUG="):]
+			parts := strings.Split(godebug, ",")
+			var filteredParts []string
+			for _, p := range parts {
+				if p != "gotypesalias=0" {
+					filteredParts = append(filteredParts, p)
+				}
+			}
+			if len(filteredParts) > 0 {
+				filtered = append(filtered, "GODEBUG="+strings.Join(filteredParts, ","))
+			}
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
 }
 
 var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
@@ -430,6 +445,10 @@ func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 		return true
 	}
 
+	if v.isErrorsAsType(call) {
+		return true
+	}
+
 	// Try to get an identifier.
 	// Currently only supports simple expressions:
 	//     1. f()
@@ -481,6 +500,37 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 			return fun
 		}
 	}
+}
+
+// isErrorsAsType reports whether call is a call to errors.AsType.
+func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
+	if call == nil || call.Fun == nil {
+		return false
+	}
+	sel, ok := baseCallExpr(call.Fun).(*ast.SelectorExpr)
+	if !ok || sel == nil || sel.Sel == nil {
+		return false
+	}
+	if sel.Sel.Name != "AsType" {
+		return false
+	}
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok || pkgIdent == nil {
+		return false
+	}
+	if v.typesInfo != nil {
+		if fn, ok := v.typesInfo.ObjectOf(sel.Sel).(*types.Func); ok {
+			if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
+				return true
+			}
+		}
+		if pkgName, ok := v.typesInfo.Uses[pkgIdent].(*types.PkgName); ok {
+			if pkgName.Imported() != nil && nonVendoredPkgPath(pkgName.Imported().Path()) == "errors" {
+				return true
+			}
+		}
+	}
+	return pkgIdent.Name == "errors"
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
@@ -589,7 +639,9 @@ func readfile(filename string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
 
 	var lines []string
 	var scanner = bufio.NewScanner(f)
@@ -605,6 +657,10 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		if call, ok := stmt.X.(*ast.CallExpr); ok {
 			if !v.ignoreCall(call) && v.callReturnsError(call) {
 				v.addErrorAtPosition(call.Lparen, call)
+			}
+		} else if unary := unwrapUnary(stmt.X); unary != nil && unary.Op == token.ARROW {
+			if v.receiveReturnsError(unary) {
+				v.addErrorAtPosition(unary.OpPos, nil)
 			}
 		}
 	case *ast.GoStmt:
@@ -673,7 +729,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				if id, ok := lhs[i].(*ast.Ident); ok {
 					// We shortcut calls to recover() because errorsByArg can't
 					// check its return types for errors since it returns interface{}.
-					if id.Name == "_" && (v.isRecover(call) || isError[i]) {
+					if id.Name == "_" && (v.isRecover(call) || (i < len(isError) && isError[i])) {
 						v.addErrorAtPosition(id.NamePos, call)
 					}
 				}
@@ -694,12 +750,22 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				v.addErrorAtPosition(id.NamePos, nil)
 			}
 			return false
+		} else if unary := unwrapUnary(rhs[0]); unary != nil && unary.Op == token.ARROW {
+			if !v.blank {
+				return true
+			}
+			if len(lhs) >= 1 && v.receiveReturnsError(unary) {
+				if id, ok := lhs[0].(*ast.Ident); ok && id.Name == "_" {
+					v.addErrorAtPosition(id.NamePos, nil)
+				}
+			}
+			return true
 		}
 	} else {
 		// multiple value on rhs; in this case a call can't return
 		// multiple values. Assume len(lhs) == len(rhs)
 		for i := 0; i < len(lhs); i++ {
-			if id, ok := lhs[i].(*ast.Ident); ok {
+			if id, ok := lhs[i].(*ast.Ident); ok && i < len(rhs) {
 				if call, ok := rhs[i].(*ast.CallExpr); ok {
 					if !v.blank {
 						continue
@@ -719,6 +785,13 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 						continue
 					}
 					v.addErrorAtPosition(id.NamePos, nil)
+				} else if unary := unwrapUnary(rhs[i]); unary != nil && unary.Op == token.ARROW {
+					if !v.blank {
+						continue
+					}
+					if id.Name == "_" && v.receiveReturnsError(unary) {
+						v.addErrorAtPosition(id.NamePos, nil)
+					}
 				}
 			}
 		}
@@ -750,6 +823,50 @@ func unwrapCall(expr ast.Expr) *ast.CallExpr {
 			return nil
 		}
 	}
+}
+
+func unwrapUnary(expr ast.Expr) *ast.UnaryExpr {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		default:
+			if unary, ok := expr.(*ast.UnaryExpr); ok {
+				return unary
+			}
+			return nil
+		}
+	}
+}
+
+func unwrapExpr(expr ast.Expr) ast.Expr {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		default:
+			return expr
+		}
+	}
+}
+
+func (v *visitor) receiveReturnsError(unary *ast.UnaryExpr) bool {
+	if unary.Op != token.ARROW {
+		return false
+	}
+	expr := unwrapExpr(unary.X)
+	t := v.typesInfo.TypeOf(expr)
+	if t == nil {
+		t = v.typesInfo.TypeOf(unary.X)
+		if t == nil {
+			return false
+		}
+	}
+	ch, ok := maybeUnalias(t).Underlying().(*types.Chan)
+	if !ok {
+		return false
+	}
+	return isErrorType(ch.Elem())
 }
 
 func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {

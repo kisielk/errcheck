@@ -20,6 +20,9 @@ var DefaultExcludedSymbols = []string{
 	// crypto
 	"crypto/rand.Read", // https://github.com/golang/go/issues/66821
 
+	// errors
+	"errors.AsType",
+
 	// fmt
 	"fmt.Print",
 	"fmt.Printf",

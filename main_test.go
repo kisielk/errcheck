@@ -34,7 +34,7 @@ func TestMainFunc(t *testing.T) {
 	go func() {
 		buf := new(bytes.Buffer)
 		_, err = io.Copy(buf, r)
-		r.Close()
+		_ = r.Close()
 		if err != nil {
 			t.Errorf("Cannot copy to buffer: %v", err)
 		}
@@ -44,7 +44,7 @@ func TestMainFunc(t *testing.T) {
 
 	exitCode := mainCmd([]string{"cmd name", "github.com/kisielk/errcheck/testdata"})
 
-	w.Close()
+	_ = w.Close()
 
 	os.Stderr = saveStderr
 	os.Stdout = saveStdout
@@ -56,7 +56,7 @@ func TestMainFunc(t *testing.T) {
 		t.Errorf("Exit code is %d, expected %d", exitCode, exitUncheckedError)
 	}
 
-	expectUnchecked := 34
+	expectUnchecked := 39
 	if got := strings.Count(out, "UNCHECKED"); got != expectUnchecked {
 		t.Errorf("Got %d UNCHECKED errors, expected %d in:\n%s", got, expectUnchecked, out)
 	}
@@ -75,7 +75,7 @@ type parseTestCase struct {
 
 func TestParseFlags(t *testing.T) {
 	cases := []parseTestCase{
-		parseTestCase{
+		{
 			args:    []string{"errcheck"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -85,7 +85,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-blank", "-asserts"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -95,7 +95,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: true,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "foo", "bar"},
 			paths:   []string{"foo", "bar"},
 			ignore:  map[string]string{},
@@ -105,7 +105,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
 			paths:   []string{"."},
 			ignore:  map[string]string{"fmt": ".*", "encoding/binary": dotStar.String()},
@@ -115,7 +115,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-ignore", "fmt:[FS]?[Pp]rint*"},
 			paths:   []string{"."},
 			ignore:  map[string]string{"fmt": "[FS]?[Pp]rint*"},
@@ -125,7 +125,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
 			paths:   []string{"."},
 			ignore:  map[string]string{"": "[rR]ead|[wW]rite"},
@@ -135,7 +135,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-ignorepkg", "testing"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -145,7 +145,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -155,7 +155,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-tags", "foo"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -165,7 +165,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-tags", "foo bar !baz"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -175,7 +175,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-tags", "foo,bar,!baz"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -185,7 +185,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
 			paths:   []string{"."},
 			ignore:  map[string]string{},
@@ -195,7 +195,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-version"},
 			paths:   nil,
 			ignore:  map[string]string{},
@@ -205,7 +205,7 @@ func TestParseFlags(t *testing.T) {
 			asserts: false,
 			error:   exitCodeOk,
 		},
-		parseTestCase{
+		{
 			args:    []string{"errcheck", "-version", "foo"},
 			paths:   nil,
 			ignore:  map[string]string{},
@@ -265,7 +265,7 @@ func TestParseFlags(t *testing.T) {
 			t.Errorf("%q: TypeAssertions got %v want %v", argsStr, a, !c.asserts)
 		}
 		if e != c.error {
-			t.Errorf("%q: error got %q want %q", argsStr, e, c.error)
+			t.Errorf("%q: error got %d want %d", argsStr, e, c.error)
 		}
 	}
 }
@@ -291,12 +291,12 @@ func captureOutput(t *testing.T, f func()) string {
 	go func() {
 		buf := new(bytes.Buffer)
 		_, _ = io.Copy(buf, r)
-		r.Close()
+		_ = r.Close()
 		bufChannel <- buf.String()
 	}()
 
 	f()
-	w.Close()
+	_ = w.Close()
 
 	return <-bufChannel
 }
