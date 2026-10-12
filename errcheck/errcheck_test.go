@@ -226,27 +226,13 @@ func main() {
 	_ = ok
 }
 `
-	tmpDir := t.TempDir()
+	tmpDir := injectPackages(t, testGoMod, testMain)
 	libDir := path.Join(tmpDir, "errtypes")
 	if err := os.MkdirAll(libDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(testGoMod), 0644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(path.Join(libDir, "errtypes.go"), []byte(testLib), 0644); err != nil {
 		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(testMain), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	origLoadPackages := loadPackages
-	t.Cleanup(func() { loadPackages = origLoadPackages })
-
-	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-		cfg.Dir = tmpDir
-		return packages.Load(cfg, paths...)
 	}
 
 	t.Run("detected", func(t *testing.T) {
@@ -574,6 +560,30 @@ func test(t *testing.T, f flags) {
 	}
 }
 
+// injectPackages writes goMod and mainGo to a temporary directory, and overrides
+// loadPackages to load packages from that directory for the duration of the test.
+// It returns the path to the temporary directory.
+func injectPackages(t *testing.T, goMod string, mainGo string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origLoadPackages := loadPackages
+	t.Cleanup(func() { loadPackages = origLoadPackages })
+
+	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+		cfg.Dir = tmpDir
+		return packages.Load(cfg, paths...)
+	}
+
+	return tmpDir
+}
+
 func TestChannelReceive(t *testing.T) {
 	const testGoMod = `module chantest
 
@@ -614,21 +624,7 @@ func main() {
 	_ = ok2
 }
 `
-	tmpDir := t.TempDir()
-	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(testGoMod), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(testMain), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	origLoadPackages := loadPackages
-	t.Cleanup(func() { loadPackages = origLoadPackages })
-
-	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-		cfg.Dir = tmpDir
-		return packages.Load(cfg, paths...)
-	}
+	injectPackages(t, testGoMod, testMain)
 
 	t.Run("default exclusions without blank checks", func(t *testing.T) {
 		var checker Checker
@@ -663,4 +659,42 @@ func main() {
 			t.Errorf("expected 4 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
 		}
 	})
+}
+
+func TestInjectPackages(t *testing.T) {
+	const testMod = "module helpertest\n\ngo 1.18\n"
+	const testMain = "package main\n\nfunc main() {}\n"
+
+	var tmpDir string
+	t.Run("injection and overrides", func(t *testing.T) {
+		tmpDir = injectPackages(t, testMod, testMain)
+
+		modBytes, err := os.ReadFile(path.Join(tmpDir, "go.mod"))
+		if err != nil {
+			t.Fatalf("failed to read go.mod: %v", err)
+		}
+		if string(modBytes) != testMod {
+			t.Errorf("go.mod content mismatch: got %q, want %q", string(modBytes), testMod)
+		}
+
+		mainBytes, err := os.ReadFile(path.Join(tmpDir, "main.go"))
+		if err != nil {
+			t.Fatalf("failed to read main.go: %v", err)
+		}
+		if string(mainBytes) != testMain {
+			t.Errorf("main.go content mismatch: got %q, want %q", string(mainBytes), testMain)
+		}
+
+		var cfg packages.Config
+		_, _ = loadPackages(&cfg, "helpertest")
+		if cfg.Dir != tmpDir {
+			t.Errorf("expected cfg.Dir to be %q, got %q", tmpDir, cfg.Dir)
+		}
+	})
+
+	var cfg packages.Config
+	_, _ = loadPackages(&cfg, "helpertest")
+	if cfg.Dir == tmpDir {
+		t.Errorf("loadPackages was not restored after cleanup; cfg.Dir is still %q", cfg.Dir)
+	}
 }
