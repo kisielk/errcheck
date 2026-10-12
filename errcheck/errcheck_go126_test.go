@@ -3,11 +3,7 @@
 package errcheck
 
 import (
-	"os"
-	"path"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 func TestErrorsAsType(t *testing.T) {
@@ -52,21 +48,7 @@ func testErrorsAsType() {
 	}
 }
 `
-	tmpDir := t.TempDir()
-	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(testGoMod), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(testMain), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	origLoadPackages := loadPackages
-	t.Cleanup(func() { loadPackages = origLoadPackages })
-
-	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-		cfg.Dir = tmpDir
-		return packages.Load(cfg, paths...)
-	}
+	injectPackages(t, testGoMod, testMain)
 
 	t.Run("ignored with blank assignments enabled", func(t *testing.T) {
 		var checker Checker
