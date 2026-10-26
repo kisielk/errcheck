@@ -73,6 +73,23 @@ func customPointerErrorTuple() (int, *MyPointerError) {
 	return 0, &e
 }
 
+type ErrorAlias = error
+
+type PointerErrorAlias = *MyPointerError
+
+func aliasError() ErrorAlias {
+	return MyError("an error occurred")
+}
+
+func aliasPointerError() PointerErrorAlias {
+	e := MyPointerError("an error occurred")
+	return &e
+}
+
+func aliasErrorTuple() (int, ErrorAlias) {
+	return 0, MyError("an error occurred")
+}
+
 type ErrorMakerInterface interface {
 	MakeNilError() error
 }
@@ -104,6 +121,14 @@ func main() {
 	customPointerError()             // want "unchecked error"
 	_, _ = customPointerErrorTuple() // ok, assigned to blank
 	customPointerErrorTuple()        // want "unchecked error"
+
+	// Return a type alias of an error type
+	_ = aliasError()         // ok, assigned to blank
+	aliasError()             // want "unchecked error"
+	_ = aliasPointerError()  // ok, assigned to blank
+	aliasPointerError()      // want "unchecked error"
+	_, _ = aliasErrorTuple() // ok, assigned to blank
+	aliasErrorTuple()        // want "unchecked error"
 
 	// Method with a single error return
 	x := t{}

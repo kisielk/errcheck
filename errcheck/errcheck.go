@@ -545,7 +545,8 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 	if v.typesInfo.Types[call.Fun].IsType() {
 		return []bool{false}
 	}
-	switch t := v.typesInfo.Types[call].Type.(type) {
+	// A result declared with a type alias is checked like its target type.
+	switch t := maybeUnalias(v.typesInfo.Types[call].Type).(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t)}
@@ -556,7 +557,7 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 		// Multiple returns
 		s := make([]bool, t.Len())
 		for i := 0; i < t.Len(); i++ {
-			switch et := t.At(i).Type().(type) {
+			switch et := maybeUnalias(t.At(i).Type()).(type) {
 			case *types.Named:
 				// Single return
 				s[i] = isErrorType(et)
