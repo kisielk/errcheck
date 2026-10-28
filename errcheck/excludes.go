@@ -44,6 +44,7 @@ var DefaultExcludedSymbols = []string{
 	// math/rand
 	"math/rand.Read",
 	"(*math/rand.Rand).Read",
+	"(*math/rand/v2.ChaCha8).Read",
 
 	// strings
 	"(*strings.Builder).Write",
