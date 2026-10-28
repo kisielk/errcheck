@@ -285,6 +285,96 @@ func main() {
 	})
 }
 
+func TestSamePackageFunctionExclude(t *testing.T) {
+	const testGoMod = `module samepkgtest
+
+go 1.18
+`
+	const testFirst = `package first
+
+import "errors"
+
+// FirstFunc is called both from within this package (unqualified, no
+// selector) and from an importing package (qualified as first.FirstFunc).
+func FirstFunc() error {
+	return errors.New("first")
+}
+
+func ThirdFunc() {
+	FirstFunc()
+}
+`
+	const testSecond = `package second
+
+import "samepkgtest/first"
+
+func SecondFunc() {
+	first.FirstFunc()
+}
+`
+	tmpDir := t.TempDir()
+	firstDir := path.Join(tmpDir, "first")
+	secondDir := path.Join(tmpDir, "second")
+	if err := os.MkdirAll(firstDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(secondDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(testGoMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(firstDir, "first.go"), []byte(testFirst), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(secondDir, "second.go"), []byte(testSecond), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origLoadPackages := loadPackages
+	t.Cleanup(func() { loadPackages = origLoadPackages })
+
+	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+		cfg.Dir = tmpDir
+		return packages.Load(cfg, paths...)
+	}
+
+	t.Run("detected", func(t *testing.T) {
+		var checker Checker
+		checker.Exclusions.BlankAssignments = false
+		pkgs, err := checker.LoadPackages("samepkgtest/first", "samepkgtest/second")
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := Result{}
+		for _, pkg := range pkgs {
+			result.Append(checker.CheckPackage(pkg))
+		}
+		result = result.Unique()
+		if len(result.UncheckedErrors) != 2 {
+			t.Errorf("expected 2 errors (one in-package, one cross-package), got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
+		}
+	})
+
+	t.Run("excluded", func(t *testing.T) {
+		var checker Checker
+		checker.Exclusions.BlankAssignments = false
+		checker.Exclusions.Symbols = []string{"samepkgtest/first.FirstFunc"}
+		pkgs, err := checker.LoadPackages("samepkgtest/first", "samepkgtest/second")
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := Result{}
+		for _, pkg := range pkgs {
+			result.Append(checker.CheckPackage(pkg))
+		}
+		result = result.Unique()
+		if len(result.UncheckedErrors) != 0 {
+			t.Errorf("expected 0 errors (both in-package and cross-package calls excluded), got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
+		}
+	})
+}
+
 func TestIgnore(t *testing.T) {
 	const testVendorGoMod = `module github.com/testvendor
 
