@@ -34,8 +34,11 @@ var DefaultExcludedSymbols = []string{
 	"fmt.Fprintf(*strings.Builder)",
 	"fmt.Fprintln(*strings.Builder)",
 	"fmt.Fprint(os.Stderr)",
+	"fmt.Fprint(os.Stdout)",
 	"fmt.Fprintf(os.Stderr)",
+	"fmt.Fprintf(os.Stdout)",
 	"fmt.Fprintln(os.Stderr)",
+	"fmt.Fprintln(os.Stdout)",
 
 	// io
 	"(*io.PipeReader).CloseWithError",
@@ -44,6 +47,7 @@ var DefaultExcludedSymbols = []string{
 	// math/rand
 	"math/rand.Read",
 	"(*math/rand.Rand).Read",
+	"(*math/rand/v2.ChaCha8).Read",
 
 	// strings
 	"(*strings.Builder).Write",
