@@ -546,7 +546,7 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 		return []bool{false}
 	}
 	// A result declared with a type alias is checked like its target type.
-	switch t := maybeUnalias(v.typesInfo.Types[call].Type).(type) {
+	switch t := types.Unalias(v.typesInfo.Types[call].Type).(type) {
 	case *types.Named:
 		// Single return
 		return []bool{isErrorType(t)}
@@ -556,8 +556,8 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 	case *types.Tuple:
 		// Multiple returns
 		s := make([]bool, t.Len())
-		for i := 0; i < t.Len(); i++ {
-			switch et := maybeUnalias(t.At(i).Type()).(type) {
+		for i := range t.Len() {
+			switch et := types.Unalias(t.At(i).Type()).(type) {
 			case *types.Named:
 				// Single return
 				s[i] = isErrorType(et)
@@ -849,7 +849,7 @@ func (v *visitor) receiveReturnsError(unary *ast.UnaryExpr) bool {
 			return false
 		}
 	}
-	ch, ok := maybeUnalias(t).Underlying().(*types.Chan)
+	ch, ok := t.Underlying().(*types.Chan)
 	if !ok {
 		return false
 	}
@@ -862,7 +862,7 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 		return
 	}
 
-	sig, ok := maybeUnalias(t).Underlying().(*types.Signature)
+	sig, ok := t.Underlying().(*types.Signature)
 	if !ok {
 		return
 	}
@@ -872,7 +872,7 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 		return
 	}
 
-	yieldSig, ok := maybeUnalias(sig.Params().At(0).Type()).Underlying().(*types.Signature)
+	yieldSig, ok := sig.Params().At(0).Type().Underlying().(*types.Signature)
 	if !ok {
 		return
 	}
@@ -924,5 +924,5 @@ func isErrorType(t types.Type) bool {
 	if t == nil {
 		return false
 	}
-	return types.Implements(maybeUnalias(t), errorType)
+	return types.Implements(types.Unalias(t), errorType)
 }

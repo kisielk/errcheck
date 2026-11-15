@@ -59,15 +59,10 @@ func (f ignoreFlag) Set(s string) error {
 	if s == "" {
 		return nil
 	}
-	for _, pair := range strings.Split(s, ",") {
-		colonIndex := strings.Index(pair, ":")
-		var pkg, re string
-		if colonIndex == -1 {
-			pkg = ""
-			re = pair
-		} else {
-			pkg = pair[:colonIndex]
-			re = pair[colonIndex+1:]
+	for pair := range strings.SplitSeq(s, ",") {
+		pkg, re, ok := strings.Cut(pair, ":")
+		if !ok {
+			pkg, re = "", pair
 		}
 		regex, err := regexp.Compile(re)
 		if err != nil {
@@ -121,7 +116,7 @@ func reportResult(e errcheck.Result) {
 	}
 }
 
-func logf(msg string, args ...interface{}) {
+func logf(msg string, args ...any) {
 	if verbose {
 		_, _ = fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	}
@@ -168,11 +163,8 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 	var wg sync.WaitGroup
 	result := &errcheck.Result{}
 	mu := &sync.Mutex{}
-	for i := 0; i < runtime.NumCPU(); i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
+	for range runtime.NumCPU() {
+		wg.Go(func() {
 			for pkg := range work {
 				logf("checking %s", pkg.Types.Path())
 				r := c.CheckPackage(pkg)
@@ -180,7 +172,7 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 				result.Append(r)
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -239,7 +231,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	}
 
 	checker.Tags = tags
-	for _, pkg := range strings.Split(*ignorePkg, ",") {
+	for pkg := range strings.SplitSeq(*ignorePkg, ",") {
 		if pkg != "" {
 			checker.Exclusions.Packages = append(checker.Exclusions.Packages, pkg)
 		}

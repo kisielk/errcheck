@@ -83,9 +83,13 @@ func walkThroughEmbeddedInterfaces(sel *types.Selection) ([]types.Type, bool) {
 	return result, true
 }
 
+// getTypeAtFieldIndex returns the type of the field at fieldIndex in the struct
+// type startingAt. Aliases, pointers and named types are looked through first,
+// so startingAt may be, for example, a *T where T is a named struct type.
+//
+// It panics if startingAt does not resolve to a struct.
 func getTypeAtFieldIndex(startingAt types.Type, fieldIndex int) types.Type {
-	t := maybeDereference(maybeUnalias(startingAt))
-	t = maybeUnname(maybeUnalias(t))
+	t := maybeDereference(types.Unalias(startingAt)).Underlying()
 	s, ok := t.(*types.Struct)
 	if !ok {
 		panic(fmt.Sprintf("cannot get Field of a type that is not a struct, got a %T", t))
@@ -113,6 +117,18 @@ func getEmbeddedInterfaceDefiningMethod(interfaceT *types.Interface, fn *types.F
 	return nil, false
 }
 
+// explicitlyDefinesMethod returns true if interfaceT explicitly defines the method fn.
+//
+// For example:
+//
+//	type Reader interface { Read() }
+//	type ReadCloser interface {
+//		Reader
+//		Close()
+//	}
+//
+// This returns true for Reader and Read, but false for ReadCloser and Read,
+// because ReadCloser gets Read from its embedded Reader.
 func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	for method := range interfaceT.ExplicitMethods() {
 		if method == fn {
@@ -122,6 +138,17 @@ func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	return false
 }
 
+// definesMethod reports whether interfaceT directly or indirectly defines fn among its methods.
+//
+// For example:
+//
+//	type Reader interface { Read() }
+//	type ReadCloser interface {
+//		Reader
+//		Close()
+//	}
+//
+// This returns true for both Reader and ReadCloser.
 func definesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	for method := range interfaceT.Methods() {
 		if method == fn {
@@ -131,6 +158,7 @@ func definesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 	return false
 }
 
+// maybeDereference returns the element type if t is a pointer; otherwise it returns t unchanged.
 func maybeDereference(t types.Type) types.Type {
 	p, ok := t.(*types.Pointer)
 	if ok {
@@ -139,6 +167,7 @@ func maybeDereference(t types.Type) types.Type {
 	return t
 }
 
+// maybeUnname returns the underlying type if t is a named type; otherwise it returns t unchanged.
 func maybeUnname(t types.Type) types.Type {
 	n, ok := t.(*types.Named)
 	if ok {
