@@ -100,10 +100,14 @@ func getTypeAtFieldIndex(startingAt types.Type, fieldIndex int) types.Type {
 //
 // If no such embedded interface is found, nil and false are returned.
 func getEmbeddedInterfaceDefiningMethod(interfaceT *types.Interface, fn *types.Func) (*types.Named, bool) {
-	for i := 0; i < interfaceT.NumEmbeddeds(); i++ {
-		embedded := interfaceT.Embedded(i)
-		if embedded != nil && definesMethod(embedded.Underlying().(*types.Interface), fn) {
-			return embedded, true
+	for embedded := range interfaceT.EmbeddedTypes() {
+		named, ok := types.Unalias(embedded).(*types.Named)
+		if !ok {
+			continue
+		}
+		iface, ok := named.Underlying().(*types.Interface)
+		if ok && definesMethod(iface, fn) {
+			return named, true
 		}
 	}
 	return nil, false
