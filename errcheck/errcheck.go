@@ -78,7 +78,7 @@ func (r *Result) Append(other Result) {
 // when a file containing an unchecked error belongs to > 1 package.
 //
 // The method receiver remains unmodified after the call to Unique.
-func (r Result) Unique() Result {
+func (r *Result) Unique() Result {
 	result := make([]UncheckedError, len(r.UncheckedErrors))
 	copy(result, r.UncheckedErrors)
 	sort.Sort((byName)(result))
@@ -293,7 +293,7 @@ func (v *visitor) selectorAndFunc(call *ast.CallExpr) (*ast.SelectorExpr, *types
 }
 
 // fullName will return a package / receiver-type qualified name for a called function
-// if the function is the result of a selector. Otherwise it will return
+// if the function is the result of a selector. Otherwise, it will return
 // the empty string.
 //
 // The name is fully qualified by the import path, possible type,
@@ -328,7 +328,7 @@ func getSelectorName(sel *ast.SelectorExpr) string {
 }
 
 // selectorName will return a name for a called function
-// if the function is the result of a selector. Otherwise it will return
+// if the function is the result of a selector. Otherwise, it will return
 // the empty string.
 //
 // The name is fully qualified by the import path, possible type,

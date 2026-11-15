@@ -13,7 +13,7 @@ var Analyzer = &analysis.Analyzer{
 	Name:       "errcheck",
 	Doc:        "check for unchecked errors",
 	Run:        runAnalyzer,
-	ResultType: reflect.TypeOf(Result{}),
+	ResultType: reflect.TypeFor[Result](),
 }
 
 var (
@@ -30,7 +30,7 @@ func init() {
 	Analyzer.Flags.BoolVar(&argExcludeOnly, "excludeonly", false, "Use only excludes from exclude file")
 }
 
-func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
+func runAnalyzer(pass *analysis.Pass) (any, error) {
 	exclude := map[string]bool{}
 	if !argExcludeOnly {
 		for _, name := range DefaultExcludedSymbols {

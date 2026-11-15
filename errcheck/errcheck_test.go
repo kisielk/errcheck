@@ -508,8 +508,8 @@ require github.com/testlog v0.0.0
 
 func test(t *testing.T, f flags) {
 	var (
-		asserts bool = f&CheckAsserts != 0
-		blank   bool = f&CheckBlank != 0
+		asserts = f&CheckAsserts != 0
+		blank   = f&CheckBlank != 0
 	)
 	var checker Checker
 	checker.Exclusions.TypeAssertions = !asserts
@@ -540,32 +540,32 @@ func test(t *testing.T, f flags) {
 
 	if len(uerr.UncheckedErrors) != numErrors {
 		t.Errorf("got %d errors, want %d", len(uerr.UncheckedErrors), numErrors)
-	unchecked_loop:
+	uncheckedLoop:
 		for k := range uncheckedMarkers {
 			for _, e := range uerr.UncheckedErrors {
 				if newMarker(e) == k {
-					continue unchecked_loop
+					continue uncheckedLoop
 				}
 			}
 			t.Errorf("Expected unchecked at %s", k)
 		}
 		if blank {
-		blank_loop:
+		blankLoop:
 			for k := range blankMarkers {
 				for _, e := range uerr.UncheckedErrors {
 					if newMarker(e) == k {
-						continue blank_loop
+						continue blankLoop
 					}
 				}
 				t.Errorf("Expected blank at %s", k)
 			}
 		}
 		if asserts {
-		assert_loop:
+		assertLoop:
 			for k := range assertMarkers {
 				for _, e := range uerr.UncheckedErrors {
 					if newMarker(e) == k {
-						continue assert_loop
+						continue assertLoop
 					}
 				}
 				t.Errorf("Expected assert at %s", k)
