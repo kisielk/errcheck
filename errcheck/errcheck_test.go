@@ -71,6 +71,30 @@ const (
 	CheckBlank
 )
 
+// injectPackages writes goMod and mainGo to a temporary directory, and overrides
+// loadPackages to load packages from that directory for the duration of the test.
+// It returns the path to the temporary directory.
+func injectPackages(t *testing.T, goMod string, mainGo string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origLoadPackages := loadPackages
+	t.Cleanup(func() { loadPackages = origLoadPackages })
+
+	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
+		cfg.Dir = tmpDir
+		return packages.Load(cfg, paths...)
+	}
+
+	return tmpDir
+}
+
 // TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
 func TestUnchecked(t *testing.T) {
 	test(t, 0)
@@ -558,30 +582,6 @@ func test(t *testing.T, f flags) {
 			t.Errorf("the line '%s' must contain the selector '%s'", err.Line, err.SelectorName)
 		}
 	}
-}
-
-// injectPackages writes goMod and mainGo to a temporary directory, and overrides
-// loadPackages to load packages from that directory for the duration of the test.
-// It returns the path to the temporary directory.
-func injectPackages(t *testing.T, goMod string, mainGo string) string {
-	t.Helper()
-	tmpDir := t.TempDir()
-	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(mainGo), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	origLoadPackages := loadPackages
-	t.Cleanup(func() { loadPackages = origLoadPackages })
-
-	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-		cfg.Dir = tmpDir
-		return packages.Load(cfg, paths...)
-	}
-
-	return tmpDir
 }
 
 func TestChannelReceive(t *testing.T) {
