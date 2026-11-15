@@ -18,16 +18,16 @@ import (
 //
 // For example, say we have:
 //
-//    type Inner interface {Method()}
-//    type Middle interface {Inner}
-//    type Outer interface {Middle}
-//    type T struct {Outer}
-//    type U struct {T}
-//    type V struct {U}
+//	type Inner interface {Method()}
+//	type Middle interface {Inner}
+//	type Outer interface {Middle}
+//	type T struct {Outer}
+//	type U struct {T}
+//	type V struct {U}
 //
 // And then the selector:
 //
-//    V.Method
+//	V.Method
 //
 // We'll return [Outer, Middle, Inner] by first walking through the embedded structs
 // until we reach the Outer interface, then descending through the embedded interfaces
@@ -110,8 +110,8 @@ func getEmbeddedInterfaceDefiningMethod(interfaceT *types.Interface, fn *types.F
 }
 
 func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
-	for i := 0; i < interfaceT.NumExplicitMethods(); i++ {
-		if interfaceT.ExplicitMethod(i) == fn {
+	for method := range interfaceT.ExplicitMethods() {
+		if method == fn {
 			return true
 		}
 	}
@@ -119,8 +119,8 @@ func explicitlyDefinesMethod(interfaceT *types.Interface, fn *types.Func) bool {
 }
 
 func definesMethod(interfaceT *types.Interface, fn *types.Func) bool {
-	for i := 0; i < interfaceT.NumMethods(); i++ {
-		if interfaceT.Method(i) == fn {
+	for method := range interfaceT.Methods() {
+		if method == fn {
 			return true
 		}
 	}

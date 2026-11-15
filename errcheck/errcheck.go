@@ -712,7 +712,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 				return true
 			}
 			isError := v.errorsByArg(call)
-			for i := 0; i < len(lhs); i++ {
+			for i := range lhs {
 				if id, ok := lhs[i].(*ast.Ident); ok {
 					// We shortcut calls to recover() because errorsByArg can't
 					// check its return types for errors since it returns interface{}.
@@ -751,7 +751,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 	} else {
 		// multiple value on rhs; in this case a call can't return
 		// multiple values. Assume len(lhs) == len(rhs)
-		for i := 0; i < len(lhs); i++ {
+		for i := range lhs {
 			if id, ok := lhs[i].(*ast.Ident); ok && i < len(rhs) {
 				if call, ok := rhs[i].(*ast.CallExpr); ok {
 					if !v.blank {
@@ -896,7 +896,7 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 		return
 	}
 
-	for i := 0; i < numYieldParams; i++ {
+	for i := range numYieldParams {
 		paramType := yieldSig.Params().At(i).Type()
 		if !isErrorType(paramType) {
 			continue
