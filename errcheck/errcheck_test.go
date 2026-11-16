@@ -192,7 +192,7 @@ package custom
 			checker.Tags = test.tags
 
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(filterEnv(os.Environ()),
+				cfg.Env = append(os.Environ(),
 					"GOPATH="+tmpGopath)
 				cfg.Dir = testBuildTagsDir
 				pkgs, err := packages.Load(cfg, paths...)
@@ -366,7 +366,7 @@ require github.com/testlog v0.0.0
 			var checker Checker
 			checker.Exclusions.SymbolRegexpsByPackage = test.ignore
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(filterEnv(os.Environ()),
+				cfg.Env = append(os.Environ(),
 					"GOPATH="+tmpGopath,
 					"GOFLAGS=-mod=vendor")
 				cfg.Dir = testVendorDir
@@ -473,7 +473,7 @@ require github.com/testlog v0.0.0
 				checker.Mod = "vendor"
 			}
 			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(filterEnv(os.Environ()),
+				cfg.Env = append(os.Environ(),
 					"GOPATH="+tmpGopath)
 
 				if !test.withModVendor {

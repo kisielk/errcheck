@@ -150,31 +150,8 @@ func (c *Checker) LoadPackages(paths ...string) ([]*packages.Package, error) {
 		Mode:       packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
 		Tests:      !c.Exclusions.TestFiles,
 		BuildFlags: buildFlags,
-		Env:        filterEnv(os.Environ()),
 	}
 	return loadPackages(cfg, paths...)
-}
-
-func filterEnv(env []string) []string {
-	var filtered []string
-	for _, e := range env {
-		if strings.HasPrefix(e, "GODEBUG=") {
-			godebug := e[len("GODEBUG="):]
-			parts := strings.Split(godebug, ",")
-			var filteredParts []string
-			for _, p := range parts {
-				if p != "gotypesalias=0" {
-					filteredParts = append(filteredParts, p)
-				}
-			}
-			if len(filteredParts) > 0 {
-				filtered = append(filtered, "GODEBUG="+strings.Join(filteredParts, ","))
-			}
-			continue
-		}
-		filtered = append(filtered, e)
-	}
-	return filtered
 }
 
 var generatedCodeRegexp = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
