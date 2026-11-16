@@ -378,13 +378,17 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 	return result
 }
 
-// isBufferType checks if the expression type is a known in-memory buffer type.
-func (v *visitor) argName(expr ast.Expr) string {
-	// Special-case literal "os.Stdout" and "os.Stderr"
-	if sel, ok := expr.(*ast.SelectorExpr); ok {
+// argTypeName returns the name of the type of the given expression.
+// As a special case, if the expression is the literal, "os.Stdout" or "os.Stderr"
+// then those strings are returned.
+// It returns "" if expr has no type.
+// This function is primarily used to match against exclusion patterns.
+func (v *visitor) argTypeName(expr ast.Expr) string {
+	// Special-case literal "os.Stdout" and "os.Stderr", even in parentheses.
+	if sel, ok := ast.Unparen(expr).(*ast.SelectorExpr); ok {
 		if obj := v.typesInfo.ObjectOf(sel.Sel); obj != nil {
 			vr, ok := obj.(*types.Var)
-			if ok && vr.Pkg() != nil && vr.Pkg().Name() == "os" && (vr.Name() == "Stderr" || vr.Name() == "Stdout") {
+			if ok && vr.Pkg() != nil && vr.Pkg().Path() == "os" && (vr.Name() == "Stderr" || vr.Name() == "Stdout") {
 				return "os." + vr.Name()
 			}
 		}
@@ -399,7 +403,7 @@ func (v *visitor) argName(expr ast.Expr) string {
 func (v *visitor) excludeCall(call *ast.CallExpr) bool {
 	var arg0 string
 	if len(call.Args) > 0 {
-		arg0 = v.argName(call.Args[0])
+		arg0 = v.argTypeName(call.Args[0])
 	}
 	for _, name := range v.namesForExcludeCheck(call) {
 		if v.exclude[name] {
