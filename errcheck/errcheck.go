@@ -3,13 +3,14 @@ package errcheck
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -46,33 +47,19 @@ type Result struct {
 	UncheckedErrors []UncheckedError
 }
 
-type byName []UncheckedError
-
-// Less reports whether the element with index i should sort before the element with index j.
-func (b byName) Less(i, j int) bool {
-	ei, ej := b[i], b[j]
-
-	pi, pj := ei.Pos, ej.Pos
-
-	if pi.Filename != pj.Filename {
-		return pi.Filename < pj.Filename
-	}
-	if pi.Line != pj.Line {
-		return pi.Line < pj.Line
-	}
-	if pi.Column != pj.Column {
-		return pi.Column < pj.Column
-	}
-
-	return ei.Line < ej.Line
-}
-
-func (b byName) Swap(i, j int) {
-	b[i], b[j] = b[j], b[i]
-}
-
-func (b byName) Len() int {
-	return len(b)
+// compareUncheckedErrors orders errors by position, then by the remaining fields.
+// It compares every field so that errors which are == always sort next to each
+// other, which Unique relies on to remove duplicates.
+func compareUncheckedErrors(a, b UncheckedError) int {
+	return cmp.Or(
+		strings.Compare(a.Pos.Filename, b.Pos.Filename),
+		cmp.Compare(a.Pos.Line, b.Pos.Line),
+		cmp.Compare(a.Pos.Column, b.Pos.Column),
+		cmp.Compare(a.Pos.Offset, b.Pos.Offset),
+		strings.Compare(a.Line, b.Line),
+		strings.Compare(a.FuncName, b.FuncName),
+		strings.Compare(a.SelectorName, b.SelectorName),
+	)
 }
 
 // Append appends errors to e. Append does not do any duplicate checking.
@@ -85,16 +72,9 @@ func (r *Result) Append(other Result) {
 //
 // The method receiver remains unmodified after the call to Unique.
 func (r *Result) Unique() Result {
-	result := make([]UncheckedError, len(r.UncheckedErrors))
-	copy(result, r.UncheckedErrors)
-	sort.Sort((byName)(result))
-	uniq := result[:0] // compact in-place
-	for i, err := range result {
-		if i == 0 || err != result[i-1] {
-			uniq = append(uniq, err)
-		}
-	}
-	return Result{UncheckedErrors: uniq}
+	result := slices.Clone(r.UncheckedErrors)
+	slices.SortFunc(result, compareUncheckedErrors)
+	return Result{UncheckedErrors: slices.Compact(result)}
 }
 
 // Exclusions define symbols and language elements that will be not checked

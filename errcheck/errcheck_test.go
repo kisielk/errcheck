@@ -2,9 +2,11 @@ package errcheck
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -696,5 +698,27 @@ func TestInjectPackages(t *testing.T) {
 	_, _ = loadPackages(&cfg, "helpertest")
 	if cfg.Dir == tmpDir {
 		t.Errorf("loadPackages was not restored after cleanup; cfg.Dir is still %q", cfg.Dir)
+	}
+}
+
+func TestUnique(t *testing.T) {
+	pos := func(file string, line, col int) token.Position {
+		return token.Position{Filename: file, Line: line, Column: col}
+	}
+	a1 := UncheckedError{Pos: pos("a.go", 1, 1), Line: "f()", FuncName: "f"}
+	a1g := UncheckedError{Pos: pos("a.go", 1, 1), Line: "f()", FuncName: "g"}
+	a2 := UncheckedError{Pos: pos("a.go", 2, 1), Line: "f()", FuncName: "f"}
+	b1 := UncheckedError{Pos: pos("b.go", 1, 1), Line: "f()", FuncName: "f"}
+
+	r := Result{UncheckedErrors: []UncheckedError{b1, a1, a2, a1g, a1, b1}}
+	orig := slices.Clone(r.UncheckedErrors)
+
+	got := r.Unique().UncheckedErrors
+	want := []UncheckedError{a1, a1g, a2, b1}
+	if !slices.Equal(got, want) {
+		t.Errorf("Unique() = %v, want %v", got, want)
+	}
+	if !slices.Equal(r.UncheckedErrors, orig) {
+		t.Errorf("Unique() modified its receiver: %v, want %v", r.UncheckedErrors, orig)
 	}
 }
