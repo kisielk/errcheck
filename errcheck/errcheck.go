@@ -474,35 +474,13 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 	}
 }
 
-// isErrorsAsType reports whether call is a call to errors.AsType.
+// isErrorsAsType reports whether call is a call to the standard library's
+// errors.AsType. It goes by the resolved function, not by how the call is
+// spelled, so a renamed import still matches and a local variable or other
+// package named "errors" does not.
 func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
-	if call == nil || call.Fun == nil {
-		return false
-	}
-	sel, ok := baseCallExpr(call.Fun).(*ast.SelectorExpr)
-	if !ok || sel == nil || sel.Sel == nil {
-		return false
-	}
-	if sel.Sel.Name != "AsType" {
-		return false
-	}
-	pkgIdent, ok := sel.X.(*ast.Ident)
-	if !ok || pkgIdent == nil {
-		return false
-	}
-	if v.typesInfo != nil {
-		if fn, ok := v.typesInfo.ObjectOf(sel.Sel).(*types.Func); ok {
-			if fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors" && fn.Name() == "AsType" {
-				return true
-			}
-		}
-		if pkgName, ok := v.typesInfo.Uses[pkgIdent].(*types.PkgName); ok {
-			if pkgName.Imported() != nil && nonVendoredPkgPath(pkgName.Imported().Path()) == "errors" {
-				return true
-			}
-		}
-	}
-	return pkgIdent.Name == "errors"
+	_, fn, ok := v.selectorAndFunc(call)
+	return ok && fn.Name() == "AsType" && fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors"
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package

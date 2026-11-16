@@ -1,6 +1,7 @@
 package errcheck
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -13,6 +14,7 @@ go 1.26
 
 import (
 	"errors"
+	stderrors "errors"
 	"io/fs"
 	"os"
 )
@@ -38,6 +40,10 @@ func testErrorsAsType() {
 
 	// Direct call statement
 	errors.AsType[MyCustomError](err)
+
+	// Renamed import of the standard library errors package
+	stderrors.AsType[MyCustomError](err)
+	_, _ = stderrors.AsType[MyCustomError](err)
 
 	// Standard library pointer error type
 	_, openErr := os.Open("non-existent")
@@ -82,4 +88,53 @@ func testErrorsAsType() {
 			t.Errorf("expected 0 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
 		}
 	})
+}
+
+// TestErrorsAsTypeLookalike checks that only the standard library's
+// errors.AsType is exempt, not a call that is merely spelled errors.AsType.
+func TestErrorsAsTypeLookalike(t *testing.T) {
+	const testGoMod = `module astypelookalike
+
+go 1.26
+`
+	const testMain = `package main
+
+import "errors"
+
+type notErrors struct{}
+
+func (notErrors) AsType(err error) (error, bool) { return err, false }
+
+func testLookalike() {
+	err := errors.New("failure")
+
+	// A local variable named errors shadows the package.
+	errors := notErrors{}
+	errors.AsType(err)
+	_, _ = errors.AsType(err)
+}
+`
+	injectPackages(t, testGoMod, testMain)
+
+	for _, defaults := range []bool{false, true} {
+		t.Run(fmt.Sprintf("default excluded symbols %v", defaults), func(t *testing.T) {
+			var checker Checker
+			checker.Exclusions.BlankAssignments = false
+			if defaults {
+				checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
+			}
+			pkgs, err := checker.LoadPackages("astypelookalike")
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := Result{}
+			for _, pkg := range pkgs {
+				result.Append(checker.CheckPackage(pkg))
+			}
+			result = result.Unique()
+			if len(result.UncheckedErrors) != 2 {
+				t.Errorf("expected 2 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
+			}
+		})
+	}
 }
