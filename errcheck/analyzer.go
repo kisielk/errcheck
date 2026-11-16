@@ -50,14 +50,14 @@ func runAnalyzer(pass *analysis.Pass) (any, error) {
 	var allErrors []UncheckedError
 	for _, f := range pass.Files {
 		v := &visitor{
-			typesInfo: pass.TypesInfo,
-			fset:      pass.Fset,
-			blank:     argBlank,
-			asserts:   argAsserts,
-			exclude:   exclude,
-			ignore:    map[string]*regexp.Regexp{}, // deprecated & not used
-			lines:     make(map[string][]string),
-			errors:    nil,
+			typesInfo:             pass.TypesInfo,
+			fset:                  pass.Fset,
+			checkBlankAssignments: argBlank,
+			checkTypeAsserts:      argAsserts,
+			exclude:               exclude,
+			ignore:                map[string]*regexp.Regexp{}, // deprecated & not used
+			lines:                 make(map[string][]string),
+			errors:                nil,
 		}
 
 		ast.Walk(v, f)

@@ -221,14 +221,14 @@ func (c *Checker) CheckPackage(pkg *packages.Package) Result {
 	}
 
 	v := &visitor{
-		typesInfo: pkg.TypesInfo,
-		fset:      pkg.Fset,
-		ignore:    ignore,
-		blank:     !c.Exclusions.BlankAssignments,
-		asserts:   !c.Exclusions.TypeAssertions,
-		lines:     make(map[string][]string),
-		exclude:   excludedSymbols,
-		errors:    []UncheckedError{},
+		typesInfo:             pkg.TypesInfo,
+		fset:                  pkg.Fset,
+		ignore:                ignore,
+		checkBlankAssignments: !c.Exclusions.BlankAssignments,
+		checkTypeAsserts:      !c.Exclusions.TypeAssertions,
+		lines:                 make(map[string][]string),
+		exclude:               excludedSymbols,
+		errors:                []UncheckedError{},
 	}
 
 	for _, astFile := range pkg.Syntax {
@@ -242,13 +242,13 @@ func (c *Checker) CheckPackage(pkg *packages.Package) Result {
 
 // visitor implements the errcheck algorithm
 type visitor struct {
-	typesInfo *types.Info
-	fset      *token.FileSet
-	ignore    map[string]*regexp.Regexp
-	blank     bool
-	asserts   bool
-	lines     map[string][]string
-	exclude   map[string]bool
+	typesInfo             *types.Info
+	fset                  *token.FileSet
+	ignore                map[string]*regexp.Regexp
+	checkBlankAssignments bool
+	checkTypeAsserts      bool
+	lines                 map[string][]string
+	exclude               map[string]bool
 
 	errors []UncheckedError
 }
@@ -685,91 +685,75 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 	if len(rhs) == 1 {
 		// single value on rhs; check against lhs identifiers
-		if call, ok := rhs[0].(*ast.CallExpr); ok {
-			if !v.blank {
+		switch expr := ast.Unparen(rhs[0]).(type) {
+		case *ast.CallExpr:
+			if !v.checkBlankAssignments || v.ignoreCall(expr) {
 				return true
 			}
-			if v.ignoreCall(call) {
-				return true
-			}
-			isError := v.errorsByArg(call)
+			isError := v.errorsByArg(expr)
 			for i := range lhs {
-				if id, ok := lhs[i].(*ast.Ident); ok {
-					// We shortcut calls to recover() because errorsByArg can't
-					// check its return types for errors since it returns interface{}.
-					if id.Name == "_" && (v.isRecover(call) || (i < len(isError) && isError[i])) {
-						v.addErrorAtPosition(id.NamePos, call)
-					}
+				// We shortcut calls to recover() because errorsByArg can't
+				// check its return types for errors since it returns interface{}.
+				if isBlankIdent(lhs[i]) && (v.isRecover(expr) || (i < len(isError) && isError[i])) {
+					v.addErrorAtPosition(lhs[i].Pos(), expr)
 				}
 			}
-		} else if assert, ok := rhs[0].(*ast.TypeAssertExpr); ok {
-			if !v.asserts {
-				return false
-			}
-			if assert.Type == nil {
-				// type switch
+		case *ast.TypeAssertExpr:
+			if !v.checkTypeAsserts || expr.Type == nil {
+				// Not checking assertions, or this is a type switch.
 				return false
 			}
 			if len(lhs) < 2 {
 				// assertion result not read
-				v.addErrorAtPosition(rhs[0].Pos(), nil)
-			} else if id, ok := lhs[1].(*ast.Ident); ok && v.blank && id.Name == "_" {
+				v.addErrorAtPosition(expr.Pos(), nil)
+			} else if v.checkBlankAssignments && isBlankIdent(lhs[1]) {
 				// assertion result ignored
-				v.addErrorAtPosition(id.NamePos, nil)
+				v.addErrorAtPosition(lhs[1].Pos(), nil)
 			}
 			return false
-		} else if unary := unwrapUnary(rhs[0]); unary != nil && unary.Op == token.ARROW {
-			if !v.blank {
-				return true
+		case *ast.UnaryExpr:
+			if expr.Op == token.ARROW && v.checkBlankAssignments && len(lhs) >= 1 && isBlankIdent(lhs[0]) && v.isChannelReceiveReturningError(expr) {
+				v.addErrorAtPosition(lhs[0].Pos(), nil)
 			}
-			if len(lhs) >= 1 && v.isChannelReceiveReturningError(unary) {
-				if id, ok := lhs[0].(*ast.Ident); ok && id.Name == "_" {
-					v.addErrorAtPosition(id.NamePos, nil)
-				}
-			}
-			return true
 		}
-	} else {
-		// multiple value on rhs; in this case a call can't return
-		// multiple values. Assume len(lhs) == len(rhs)
-		for i := range lhs {
-			if id, ok := lhs[i].(*ast.Ident); ok && i < len(rhs) {
-				if call, ok := rhs[i].(*ast.CallExpr); ok {
-					if !v.blank {
-						continue
-					}
-					if v.ignoreCall(call) {
-						continue
-					}
-					if id.Name == "_" && v.callReturnsError(call) {
-						v.addErrorAtPosition(id.NamePos, call)
-					}
-				} else if assert, ok := rhs[i].(*ast.TypeAssertExpr); ok {
-					if !v.asserts {
-						continue
-					}
-					if assert.Type == nil {
-						// Shouldn't happen anyway, no multi assignment in type switches
-						continue
-					}
-					v.addErrorAtPosition(id.NamePos, nil)
-				} else if unary := unwrapUnary(rhs[i]); unary != nil && unary.Op == token.ARROW {
-					if !v.blank {
-						continue
-					}
-					if id.Name == "_" && v.isChannelReceiveReturningError(unary) {
-						v.addErrorAtPosition(id.NamePos, nil)
-					}
-				}
+		return true
+	}
+
+	// multiple value on rhs; in this case a call can't return
+	// multiple values. Assume len(lhs) == len(rhs)
+	//
+	// Type assertions need no handling here: each one is in its
+	// single-value form, so the walk into rhs reports it through
+	// checkAssertExpr.
+	if !v.checkBlankAssignments {
+		return true
+	}
+	for i := range min(len(lhs), len(rhs)) {
+		if !isBlankIdent(lhs[i]) {
+			continue
+		}
+		switch expr := ast.Unparen(rhs[i]).(type) {
+		case *ast.CallExpr:
+			if !v.ignoreCall(expr) && v.callReturnsError(expr) {
+				v.addErrorAtPosition(lhs[i].Pos(), expr)
+			}
+		case *ast.UnaryExpr:
+			if expr.Op == token.ARROW && v.isChannelReceiveReturningError(expr) {
+				v.addErrorAtPosition(lhs[i].Pos(), nil)
 			}
 		}
 	}
-
 	return true
 }
 
+// isBlankIdent reports whether expr is the blank identifier "_".
+func isBlankIdent(expr ast.Expr) bool {
+	id, ok := expr.(*ast.Ident)
+	return ok && id.Name == "_"
+}
+
 func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
-	if !v.asserts {
+	if !v.checkTypeAsserts {
 		return
 	}
 	if expr.Type == nil {
@@ -858,7 +842,7 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 			v.addErrorAtPosition(stmt.Pos(), call)
 			break
 		} else if id, ok := expr.(*ast.Ident); ok && id.Name == "_" {
-			if v.blank {
+			if v.checkBlankAssignments {
 				v.addErrorAtPosition(id.NamePos, call)
 			}
 		}

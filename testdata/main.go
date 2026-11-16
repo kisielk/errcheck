@@ -173,6 +173,19 @@ func main() {
 	)
 	_ = s5
 
+	// An unchecked assertion in a multi-value assignment is reported once
+	s6, n := i.(string), 1 // ASSERT
+	_, _ = s6, n
+
+	// Parenthesized right-hand sides are checked like unparenthesized ones
+	_ = (a())             // BLANK
+	_, _ = (b())          // BLANK
+	_, _ = 1, (a())       // BLANK
+	var _ = (a())         // BLANK
+	s7, _ := (i.(string)) // ASSERT
+	s8, ok2 := (i.(string))
+	_, _, _ = s7, s8, ok2
+
 	// Goroutine
 	go a()    // UNCHECKED
 	defer a() // UNCHECKED
