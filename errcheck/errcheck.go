@@ -177,7 +177,7 @@ func filterEnv(env []string) []string {
 	return filtered
 }
 
-var generatedCodeRegexp = regexp.MustCompile("^// Code generated .* DO NOT EDIT\\.$")
+var generatedCodeRegexp = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
 var dotStar = regexp.MustCompile(".*")
 
 func (c *Checker) shouldSkipFile(file *ast.File) bool {
@@ -209,14 +209,10 @@ func (c *Checker) CheckPackage(pkg *packages.Package) Result {
 	ignore := map[string]*regexp.Regexp{}
 	// Apply SymbolRegexpsByPackage first so that if the same path appears in
 	// Packages, a more narrow regexp will be superseded by dotStar below.
-	if regexps := c.Exclusions.SymbolRegexpsByPackage; regexps != nil {
-		for pkg, re := range regexps {
-			// TODO warn if previous entry overwritten?
-			ignore[nonVendoredPkgPath(pkg)] = re
-		}
+	for pkg, re := range c.Exclusions.SymbolRegexpsByPackage {
+		ignore[nonVendoredPkgPath(pkg)] = re
 	}
 	for _, pkg := range c.Exclusions.Packages {
-		// TODO warn if previous entry overwritten?
 		ignore[nonVendoredPkgPath(pkg)] = dotStar
 	}
 
