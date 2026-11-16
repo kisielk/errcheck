@@ -416,6 +416,8 @@ func (v *visitor) excludeCall(call *ast.CallExpr) bool {
 	return false
 }
 
+// ignoreCall reports whether call is excluded from checking, by the
+// exclusion list, the ignore regexps, or the errors.AsType special case.
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
 	if v.excludeCall(call) {
 		return true
@@ -598,7 +600,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
 		if call := unwrapCall(stmt.X); call != nil {
-			if !v.ignoreCall(call) && v.callReturnsError(call) {
+			if v.callReturnsError(call) && !v.ignoreCall(call) {
 				v.addErrorAtPosition(call.Lparen, call)
 			}
 		} else if unary := unwrapUnary(stmt.X); unary != nil && unary.Op == token.ARROW {
@@ -607,11 +609,11 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 	case *ast.GoStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if v.callReturnsError(stmt.Call) && !v.ignoreCall(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen, stmt.Call)
 		}
 	case *ast.DeferStmt:
-		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
+		if v.callReturnsError(stmt.Call) && !v.ignoreCall(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen, stmt.Call)
 		}
 	case *ast.ValueSpec:
@@ -657,15 +659,24 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 		// single value on rhs; check against lhs identifiers
 		switch expr := ast.Unparen(rhs[0]).(type) {
 		case *ast.CallExpr:
-			if !v.checkBlankAssignments || v.ignoreCall(expr) {
+			if !v.checkBlankAssignments {
 				return true
 			}
+			// Find the blank identifiers that would be reported before
+			// checking exclusions, since that check is much more expensive
+			// and most calls have no error assigned to a blank identifier.
+			var blanks []ast.Expr
 			isError := v.errorsByArg(expr)
 			for i := range lhs {
 				// We shortcut calls to recover() because errorsByArg can't
 				// check its return types for errors since it returns interface{}.
 				if isBlankIdent(lhs[i]) && (v.isRecover(expr) || (i < len(isError) && isError[i])) {
-					v.addErrorAtPosition(lhs[i].Pos(), expr)
+					blanks = append(blanks, lhs[i])
+				}
+			}
+			if len(blanks) > 0 && !v.ignoreCall(expr) {
+				for _, blank := range blanks {
+					v.addErrorAtPosition(blank.Pos(), expr)
 				}
 			}
 		case *ast.TypeAssertExpr:
@@ -704,7 +715,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 		}
 		switch expr := ast.Unparen(rhs[i]).(type) {
 		case *ast.CallExpr:
-			if !v.ignoreCall(expr) && v.callReturnsError(expr) {
+			if v.callReturnsError(expr) && !v.ignoreCall(expr) {
 				v.addErrorAtPosition(lhs[i].Pos(), expr)
 			}
 		case *ast.UnaryExpr:
