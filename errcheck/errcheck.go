@@ -2,7 +2,6 @@
 package errcheck
 
 import (
-	"bufio"
 	"cmp"
 	"fmt"
 	"go/ast"
@@ -493,7 +492,11 @@ func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 	pos := v.fset.Position(position)
 	lines, ok := v.lines[pos.Filename]
 	if !ok {
-		lines = readfile(pos.Filename)
+		// We haven't read and cached the file yet, so read it now. If it
+		// can't be read, cache nil so every line in it shows as "??".
+		if data, err := os.ReadFile(pos.Filename); err == nil {
+			lines = strings.Split(string(data), "\n")
+		}
 		v.lines[pos.Filename] = lines
 	}
 
@@ -514,23 +517,6 @@ func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 	}
 
 	v.errors = append(v.errors, UncheckedError{pos, line, funcName, selectorName})
-}
-
-func readfile(filename string) []string {
-	var f, err = os.Open(filename)
-	if err != nil {
-		return nil
-	}
-	defer func(f *os.File) {
-		_ = f.Close()
-	}(f)
-
-	var lines []string
-	var scanner = bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines
 }
 
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
