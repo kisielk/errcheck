@@ -100,6 +100,10 @@ func main() {
 	_, _ = b() // BLANK
 	b()        // UNCHECKED
 
+	// Parenthesized call statement
+	(a()) // UNCHECKED
+	(b()) // UNCHECKED
+
 	// Return a custom error type
 	_ = customError() // BLANK
 	customError()     // UNCHECKED

@@ -647,7 +647,7 @@ func readfile(filename string) []string {
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch stmt := node.(type) {
 	case *ast.ExprStmt:
-		if call, ok := stmt.X.(*ast.CallExpr); ok {
+		if call := unwrapCall(stmt.X); call != nil {
 			if !v.ignoreCall(call) && v.callReturnsError(call) {
 				v.addErrorAtPosition(call.Lparen, call)
 			}
