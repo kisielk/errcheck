@@ -278,90 +278,52 @@ func (v *visitor) selectorAndFunc(call *ast.CallExpr) (*ast.SelectorExpr, *types
 
 }
 
-// fullName will return a package / receiver-type qualified name for a called function
-// if the function is the result of a selector. Otherwise, it will return
-// the empty string.
+// getSelectorName returns a name for a called function
+// if the function is the result of a selector. Otherwise, it returns
+// an empty string.
 //
 // The name is fully qualified by the import path, possible type,
 // function/method name and pointer receiver.
 //
-// For example,
-//   - for "fmt.Printf(...)" it will return "fmt.Printf"
-//   - for "base64.StdEncoding.Decode(...)" it will return "(*encoding/base64.Encoding).Decode"
-//   - for "myFunc()" it will return ""
-func (v *visitor) fullName(call *ast.CallExpr) string {
-	_, fn, ok := v.selectorAndFunc(call)
-	if !ok {
-		return ""
-	}
-
-	// TODO(dh): vendored packages will have /vendor/ in their name,
-	// thus not matching vendored standard library packages. If we
-	// want to support vendored stdlib packages, we need to implement
-	// FullName with our own logic.
-	return fn.FullName()
-}
-
+// For example:
+//   - "fmt.Printf(...)" -> "fmt.Printf"
+//   - "base64.StdEncoding.Decode(...)" -> "base64.StdEncoding.Decode"
+//   - "myFunc()" -> ""
 func getSelectorName(sel *ast.SelectorExpr) string {
 	if ident, ok := sel.X.(*ast.Ident); ok {
-		return fmt.Sprintf("%s.%s", ident.Name, sel.Sel.Name)
+		return ident.Name + "." + sel.Sel.Name
 	}
 	if s, ok := sel.X.(*ast.SelectorExpr); ok {
-		return fmt.Sprintf("%s.%s", getSelectorName(s), sel.Sel.Name)
+		return getSelectorName(s) + "." + sel.Sel.Name
 	}
 
 	return ""
 }
 
-// selectorName will return a name for a called function
-// if the function is the result of a selector. Otherwise, it will return
-// the empty string.
+// namesForExcludeCheck returns the names to look up in the exclusion list
+// for a call of fn through the selector sel, as returned by selectorAndFunc.
 //
-// The name is fully qualified by the import path, possible type,
-// function/method name and pointer receiver.
+// For a package-level function or a method of a concrete type, this is just
+// fn's full name, such as "fmt.Printf" or "(*bytes.Buffer).Write".
 //
-// For example,
-//   - for "fmt.Printf(...)" it will return "fmt.Printf"
-//   - for "base64.StdEncoding.Decode(...)" it will return "base64.StdEncoding.Decode"
-//   - for "myFunc()" it will return ""
-func (v *visitor) selectorName(call *ast.CallExpr) string {
-	sel, _, ok := v.selectorAndFunc(call)
-	if !ok {
-		return ""
-	}
-
-	return getSelectorName(sel)
-}
-
-// namesForExcludeCheck will return a list of fully-qualified function names
-// from a function call that can be used to check against the exclusion list.
-//
-// If a function call is against a local function (like "myFunc()") then no
-// names are returned. If the function is package-qualified (like "fmt.Printf()")
-// then just that function's fullName is returned.
-//
-// Otherwise, we walk through all the potentially embedded interfaces of the receiver
-// to collect a list of type-qualified function names that we will check.
-func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
-	sel, fn, ok := v.selectorAndFunc(call)
-	if !ok {
-		return nil
-	}
-
-	name := v.fullName(call)
-	if name == "" {
-		return nil
-	}
+// For a method declared in an interface, it returns a name for each interface
+// between the receiver and the interface that declares the method, looking
+// through embedded struct fields and embedded interfaces. For example, Write
+// called on an io.ReadWriter gives "(io.ReadWriter).Write" and
+// "(io.Writer).Write", so excluding "(io.Writer).Write" also excludes calls
+// through interfaces that embed io.Writer.
+func (v *visitor) namesForExcludeCheck(sel *ast.SelectorExpr, fn *types.Func) []string {
+	name := fn.FullName()
 
 	// This will be missing for functions without a receiver (like fmt.Printf),
-	// so just fall back to the function's fullName in that case.
+	// so just fall back to the function's full name in that case.
 	selection, ok := v.typesInfo.Selections[sel]
 	if !ok {
 		return []string{name}
 	}
 
 	// This will return with ok false if the function isn't defined
-	// on an interface, so just fall back to the fullName.
+	// on an interface, so just fall back to the full name.
 	ts, ok := walkThroughEmbeddedInterfaces(selection)
 	if !ok {
 		return []string{name}
@@ -369,10 +331,6 @@ func (v *visitor) namesForExcludeCheck(call *ast.CallExpr) []string {
 
 	result := make([]string, len(ts))
 	for i, t := range ts {
-		// Like in fullName, vendored packages will have /vendor/ in their name,
-		// thus not matching vendored standard library packages. If we
-		// want to support vendored stdlib packages, we need to implement
-		// additional logic here.
 		result[i] = fmt.Sprintf("(%s).%s", t.String(), fn.Name())
 	}
 	return result
@@ -400,12 +358,15 @@ func (v *visitor) argTypeName(expr ast.Expr) string {
 	return t.String()
 }
 
-func (v *visitor) excludeCall(call *ast.CallExpr) bool {
+// excludeCall reports whether call, a call of fn through the selector sel,
+// matches the exclusion list, either by name alone or by name and the
+// type of its first argument.
+func (v *visitor) excludeCall(call *ast.CallExpr, sel *ast.SelectorExpr, fn *types.Func) bool {
 	var arg0 string
 	if len(call.Args) > 0 {
 		arg0 = v.argTypeName(call.Args[0])
 	}
-	for _, name := range v.namesForExcludeCheck(call) {
+	for _, name := range v.namesForExcludeCheck(sel, fn) {
 		if v.exclude[name] {
 			return true
 		}
@@ -419,12 +380,12 @@ func (v *visitor) excludeCall(call *ast.CallExpr) bool {
 // ignoreCall reports whether call is excluded from checking, by the
 // exclusion list, the ignore regexps, or the errors.AsType special case.
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
-	if v.excludeCall(call) {
-		return true
-	}
-
-	if v.isErrorsAsType(call) {
-		return true
+	// The exclusion list and errors.AsType only apply to selector calls
+	// like "pkg.F()" or "x.M()". Look up the selector once for both.
+	if sel, fn, ok := v.selectorAndFunc(call); ok {
+		if v.excludeCall(call, sel, fn) || isErrorsAsType(fn) {
+			return true
+		}
 	}
 
 	// Try to get an identifier.
@@ -480,13 +441,12 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 	}
 }
 
-// isErrorsAsType reports whether call is a call to the standard library's
-// errors.AsType. It goes by the resolved function, not by how the call is
-// spelled, so a renamed import still matches and a local variable or other
-// package named "errors" does not.
-func (v *visitor) isErrorsAsType(call *ast.CallExpr) bool {
-	_, fn, ok := v.selectorAndFunc(call)
-	return ok && fn.Name() == "AsType" && fn.Pkg() != nil && nonVendoredPkgPath(fn.Pkg().Path()) == "errors"
+// isErrorsAsType reports whether fn, a called function as returned by
+// selectorAndFunc, is the standard library's errors.AsType. It goes by the
+// resolved function, not by how the call is spelled, so a renamed import
+// still matches and a local variable or other package named "errors" does not.
+func isErrorsAsType(fn *types.Func) bool {
+	return fn.Name() == "AsType" && fn.Pkg() != nil && fn.Pkg().Path() == "errors"
 }
 
 // nonVendoredPkgPath returns the unvendored version of the provided package
@@ -569,14 +529,18 @@ func (v *visitor) addErrorAtPosition(position token.Pos, call *ast.CallExpr) {
 		line = strings.TrimSpace(lines[pos.Line-1])
 	}
 
-	var name string
-	var sel string
+	// Both names are only set for selector calls like "fmt.Printf(...)",
+	// giving "fmt.Printf" and "fmt.Printf", or "base64.StdEncoding.Decode(...)",
+	// giving "(*encoding/base64.Encoding).Decode" and "base64.StdEncoding.Decode".
+	var funcName, selectorName string
 	if call != nil {
-		name = v.fullName(call)
-		sel = v.selectorName(call)
+		if sel, fn, ok := v.selectorAndFunc(call); ok {
+			funcName = fn.FullName()
+			selectorName = getSelectorName(sel)
+		}
 	}
 
-	v.errors = append(v.errors, UncheckedError{pos, line, name, sel})
+	v.errors = append(v.errors, UncheckedError{pos, line, funcName, selectorName})
 }
 
 func readfile(filename string) []string {
