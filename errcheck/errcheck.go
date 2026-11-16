@@ -531,32 +531,20 @@ func (v *visitor) errorsByArg(call *ast.CallExpr) []bool {
 	if v.typesInfo.Types[call.Fun].IsType() {
 		return []bool{false}
 	}
-	// A result declared with a type alias is checked like its target type.
-	switch t := types.Unalias(v.typesInfo.Types[call].Type).(type) {
-	case *types.Named:
-		// Single return
-		return []bool{isErrorType(t)}
-	case *types.Pointer:
-		// Single return via pointer
-		return []bool{isErrorType(t)}
-	case *types.Tuple:
+
+	// Any result type can implement error, including type parameters
+	// constrained by error and unnamed interface types, so every result
+	// is checked with isErrorType (which also looks through aliases).
+	t := v.typesInfo.Types[call].Type
+	if tuple, ok := t.(*types.Tuple); ok {
 		// Multiple returns
-		s := make([]bool, t.Len())
-		for i := range t.Len() {
-			switch et := types.Unalias(t.At(i).Type()).(type) {
-			case *types.Named:
-				// Single return
-				s[i] = isErrorType(et)
-			case *types.Pointer:
-				// Single return via pointer
-				s[i] = isErrorType(et)
-			default:
-				s[i] = false
-			}
+		s := make([]bool, tuple.Len())
+		for i := range tuple.Len() {
+			s[i] = isErrorType(tuple.At(i).Type())
 		}
 		return s
 	}
-	return []bool{false}
+	return []bool{isErrorType(t)}
 }
 
 func (v *visitor) callReturnsError(call *ast.CallExpr) bool {
