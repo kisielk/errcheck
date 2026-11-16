@@ -644,27 +644,22 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		if !v.ignoreCall(stmt.Call) && v.callReturnsError(stmt.Call) {
 			v.addErrorAtPosition(stmt.Call.Lparen, stmt.Call)
 		}
-	case *ast.GenDecl:
-		if stmt.Tok != token.VAR {
-			break
+	case *ast.ValueSpec:
+		// Previously we checked on *ast.GenDecl but that resulted in one
+		// check for a whole var or const block, e.g.:
+		//    var (
+		//        a = b
+		//        c = d
+		//    )
+		// so that if the first assignment was skipped, the rest would be too.
+		//
+		// Instead, by using ast.ValueSpec, we check each assignment separately.
+		lhs := make([]ast.Expr, len(stmt.Names))
+		for i, name := range stmt.Names {
+			lhs[i] = name
 		}
-
-		for _, spec := range stmt.Specs {
-			vspec := spec.(*ast.ValueSpec)
-
-			if len(vspec.Values) == 0 {
-				// ignore declarations w/o assignments
-				continue
-			}
-
-			var lhs []ast.Expr
-			for _, name := range vspec.Names {
-				lhs = append(lhs, ast.Expr(name))
-			}
-			followed := v.checkAssignment(lhs, vspec.Values)
-			if !followed {
-				return nil
-			}
+		if !v.checkAssignment(lhs, stmt.Values) {
+			return nil
 		}
 
 	case *ast.AssignStmt:

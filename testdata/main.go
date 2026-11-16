@@ -165,6 +165,14 @@ func main() {
 	}
 	_, _, _, _ = s1, s2, s3, ok
 
+	// Specs after a type assertion in a var block are still checked
+	var (
+		s5 = i.(string)     // ASSERT
+		_  = a()            // BLANK
+		_  = func() { a() } // UNCHECKED
+	)
+	_ = s5
+
 	// Goroutine
 	go a()    // UNCHECKED
 	defer a() // UNCHECKED
