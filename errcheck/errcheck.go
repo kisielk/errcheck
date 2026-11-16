@@ -15,10 +15,16 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var errorType *types.Interface
+// errorType is the type of the error interface.
+// It's initialized when the package is imported to avoid lookup on every call to isErrorType.
+var errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 
-func init() {
-	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+// isErrorType reports whether t is an error type.
+func isErrorType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	return types.Implements(types.Unalias(t), errorType)
 }
 
 // UncheckedError indicates the position of an unchecked error return.
@@ -646,7 +652,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 				v.addErrorAtPosition(call.Lparen, call)
 			}
 		} else if unary := unwrapUnary(stmt.X); unary != nil && unary.Op == token.ARROW {
-			if v.receiveReturnsError(unary) {
+			if v.isChannelReceiveReturningError(unary) {
 				v.addErrorAtPosition(unary.OpPos, nil)
 			}
 		}
@@ -741,7 +747,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 			if !v.blank {
 				return true
 			}
-			if len(lhs) >= 1 && v.receiveReturnsError(unary) {
+			if len(lhs) >= 1 && v.isChannelReceiveReturningError(unary) {
 				if id, ok := lhs[0].(*ast.Ident); ok && id.Name == "_" {
 					v.addErrorAtPosition(id.NamePos, nil)
 				}
@@ -776,7 +782,7 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 					if !v.blank {
 						continue
 					}
-					if id.Name == "_" && v.receiveReturnsError(unary) {
+					if id.Name == "_" && v.isChannelReceiveReturningError(unary) {
 						v.addErrorAtPosition(id.NamePos, nil)
 					}
 				}
@@ -798,62 +804,26 @@ func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
 	v.addErrorAtPosition(expr.Pos(), nil)
 }
 
+// unwrapCall returns the call expression within expr after removing parentheses, or nil if expr is not a call.
 func unwrapCall(expr ast.Expr) *ast.CallExpr {
-	for {
-		switch e := expr.(type) {
-		case *ast.ParenExpr:
-			expr = e.X
-		default:
-			if call, ok := expr.(*ast.CallExpr); ok {
-				return call
-			}
-			return nil
-		}
-	}
+	call, _ := ast.Unparen(expr).(*ast.CallExpr)
+	return call
 }
 
+// unwrapUnary returns the unary expression within expr after removing parentheses, or nil if expr is not a unary expression.
 func unwrapUnary(expr ast.Expr) *ast.UnaryExpr {
-	for {
-		switch e := expr.(type) {
-		case *ast.ParenExpr:
-			expr = e.X
-		default:
-			if unary, ok := expr.(*ast.UnaryExpr); ok {
-				return unary
-			}
-			return nil
-		}
-	}
+	unary, _ := ast.Unparen(expr).(*ast.UnaryExpr)
+	return unary
 }
 
-func unwrapExpr(expr ast.Expr) ast.Expr {
-	for {
-		switch e := expr.(type) {
-		case *ast.ParenExpr:
-			expr = e.X
-		default:
-			return expr
-		}
-	}
-}
-
-func (v *visitor) receiveReturnsError(unary *ast.UnaryExpr) bool {
-	if unary.Op != token.ARROW {
-		return false
-	}
-	expr := unwrapExpr(unary.X)
-	t := v.typesInfo.TypeOf(expr)
+// isChannelReceiveReturningError reports whether the unary expression is a receive from a channel that returns an error.
+func (v *visitor) isChannelReceiveReturningError(unary *ast.UnaryExpr) bool {
+	t := v.typesInfo.TypeOf(ast.Unparen(unary.X))
 	if t == nil {
-		t = v.typesInfo.TypeOf(unary.X)
-		if t == nil {
-			return false
-		}
+		return false
 	}
 	ch, ok := t.Underlying().(*types.Chan)
-	if !ok {
-		return false
-	}
-	return isErrorType(ch.Elem())
+	return ok && isErrorType(ch.Elem())
 }
 
 func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
@@ -918,11 +888,4 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 			}
 		}
 	}
-}
-
-func isErrorType(t types.Type) bool {
-	if t == nil {
-		return false
-	}
-	return types.Implements(types.Unalias(t), errorType)
 }
