@@ -57,6 +57,13 @@ func walkThroughEmbeddedInterfaces(sel *types.Selection) ([]types.Type, bool) {
 	//
 	// If it is an Interface, we potentially need to continue digging until
 	// we find the Interface that actually explicitly defines the function.
+
+	// The receiver or the last field may be an alias of an interface, so
+	// look through it first. This also means the aliased type, not the
+	// alias, goes into the result, which is what exclusions are written
+	// against (for example "(hash.Hash).Write" for an alias of hash.Hash).
+	currentT = types.Unalias(currentT)
+
 	interfaceT, ok := maybeUnname(currentT).(*types.Interface)
 	if !ok {
 		return nil, false

@@ -33,6 +33,11 @@ type EmptyInterface interface {}
 type SameSignatureInterface interface {
 	Method()
 }
+
+type InnerInterfaceAlias = InnerInterface
+type OuterInterfaceAlias = OuterInterface
+type AliasFieldStruct struct {OuterInterfaceAlias}
+type UnnamedInterfaceAlias = interface {Method()}
 `
 
 // testCase is a TestWalkThroughEmbeddedInterfaces case. selector is the
@@ -56,6 +61,11 @@ func TestWalkThroughEmbeddedInterfaces(t *testing.T) {
 		{"InnerInterface.Method", true, []string{"test.InnerInterface"}},
 		{"OuterInterface.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
 		{"OuterInterfaceStruct.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
+		// Aliases are looked through, and the aliased types are returned.
+		{"InnerInterfaceAlias.Method", true, []string{"test.InnerInterface"}},
+		{"OuterInterfaceAlias.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
+		{"AliasFieldStruct.Method", true, []string{"test.OuterInterface", "test.InnerInterface"}},
+		{"UnnamedInterfaceAlias.Method", true, []string{"interface{Method()}"}},
 	}
 
 	for _, c := range cases {
