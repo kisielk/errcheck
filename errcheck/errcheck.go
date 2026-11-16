@@ -756,36 +756,46 @@ func (v *visitor) checkRangeStmt(stmt *ast.RangeStmt) {
 		return
 	}
 
-	call := unwrapCall(stmt.X)
-	if call != nil && v.ignoreCall(call) {
-		return
-	}
-
 	numYieldParams := yieldSig.Params().Len()
 	if numYieldParams == 0 || numYieldParams > 2 {
 		return
 	}
 
+	// Find the errors that would be reported before checking exclusions,
+	// since that check is much more expensive.
+	var positions []token.Pos
 	for i := range numYieldParams {
-		paramType := yieldSig.Params().At(i).Type()
-		if !isErrorType(paramType) {
+		if !isErrorType(yieldSig.Params().At(i).Type()) {
 			continue
 		}
 
 		var expr ast.Expr
-		if i == 0 {
+		switch i {
+		case 0:
 			expr = stmt.Key
-		} else if i == 1 {
+		case 1:
 			expr = stmt.Value
 		}
 
 		if expr == nil {
-			v.addErrorAtPosition(stmt.Pos(), call)
+			// The error isn't assigned at all. Any later values aren't
+			// either, so report the range statement once.
+			positions = append(positions, stmt.Pos())
 			break
-		} else if id, ok := expr.(*ast.Ident); ok && id.Name == "_" {
-			if v.checkBlankAssignments {
-				v.addErrorAtPosition(id.NamePos, call)
-			}
 		}
+		if v.checkBlankAssignments && isBlankIdent(expr) {
+			positions = append(positions, expr.Pos())
+		}
+	}
+	if len(positions) == 0 {
+		return
+	}
+
+	call := unwrapCall(stmt.X)
+	if call != nil && v.ignoreCall(call) {
+		return
+	}
+	for _, pos := range positions {
+		v.addErrorAtPosition(pos, call)
 	}
 }
