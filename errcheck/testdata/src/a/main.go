@@ -143,7 +143,7 @@ func main() {
 	x3 := &embedtalias{}
 	_ = x3.a() // ok, assigned to blank
 	x3.a()     // want "unchecked error"
-	
+
 	var x4 embedtptralias
 	_ = x4.a() // ok, assigned to blank
 	x4.a()     // want "unchecked error"

@@ -61,7 +61,7 @@ func main() {
 	_ = <-errChan      // want "unchecked error"
 	_, ok := <-errChan // want "unchecked error"
 	_ = ok
-	var _ = <-errChan  // want "unchecked error"
+	var _ = <-errChan // want "unchecked error"
 
 	errVal := <-errChan
 	_ = errVal

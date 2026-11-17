@@ -50,8 +50,8 @@ func testChannels() {
 	_, _ = <-intChan
 
 	// Declarations with blank assignments
-	var _ = <-errChan       // BLANK
-	var _, ok3 = <-errChan  // BLANK
+	var _ = <-errChan      // BLANK
+	var _, ok3 = <-errChan // BLANK
 	_ = ok3
 	var _ = <-customErrChan // BLANK
 	var _ = <-ptrErrChan    // BLANK
