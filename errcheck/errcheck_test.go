@@ -15,12 +15,18 @@ import (
 
 const testPackage = "github.com/kisielk/errcheck/testdata"
 
-var (
-	uncheckedMarkers map[marker]bool
-	blankMarkers     map[marker]bool
-	assertMarkers    map[marker]bool
+// Marker comments in testPackage, put on lines where an error should be
+// reported. Blank and assert markers only apply when those checks are on.
+const (
+	markUnchecked = "UNCHECKED"
+	markBlank     = "BLANK"
+	markAssert    = "ASSERT"
 )
 
+// markers maps each marked line in testPackage to its marker.
+var markers = map[marker]string{}
+
+// marker is a line in a file.
 type marker struct {
 	file string
 	line int
@@ -35,10 +41,6 @@ func (m marker) String() string {
 }
 
 func init() {
-	uncheckedMarkers = make(map[marker]bool)
-	blankMarkers = make(map[marker]bool)
-	assertMarkers = make(map[marker]bool)
-
 	cfg := &packages.Config{
 		Mode:  packages.NeedSyntax | packages.NeedTypes,
 		Tests: true,
@@ -50,16 +52,10 @@ func init() {
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, comment := range file.Comments {
-				text := comment.Text()
-				pos := pkg.Fset.Position(comment.Pos())
-				m := marker{pos.Filename, pos.Line}
-				switch text {
-				case "UNCHECKED\n":
-					uncheckedMarkers[m] = true
-				case "BLANK\n":
-					blankMarkers[m] = true
-				case "ASSERT\n":
-					assertMarkers[m] = true
+				switch text := strings.TrimSuffix(comment.Text(), "\n"); text {
+				case markUnchecked, markBlank, markAssert:
+					pos := pkg.Fset.Position(comment.Pos())
+					markers[marker{pos.Filename, pos.Line}] = text
 				}
 			}
 		}
@@ -402,57 +398,29 @@ func test(t *testing.T, f flags) {
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	)
-	uerr := Result{UncheckedErrors: check(t, &checker, testPackage)}
-	numErrors := len(uncheckedMarkers)
-	if blank {
-		numErrors += len(blankMarkers)
-	}
-	if asserts {
-		numErrors += len(assertMarkers)
-	}
-
-	if len(uerr.UncheckedErrors) != numErrors {
-		t.Errorf("got %d errors, want %d", len(uerr.UncheckedErrors), numErrors)
-	uncheckedLoop:
-		for k := range uncheckedMarkers {
-			for _, e := range uerr.UncheckedErrors {
-				if newMarker(e) == k {
-					continue uncheckedLoop
-				}
-			}
-			t.Errorf("Expected unchecked at %s", k)
-		}
-		if blank {
-		blankLoop:
-			for k := range blankMarkers {
-				for _, e := range uerr.UncheckedErrors {
-					if newMarker(e) == k {
-						continue blankLoop
-					}
-				}
-				t.Errorf("Expected blank at %s", k)
-			}
-		}
-		if asserts {
-		assertLoop:
-			for k := range assertMarkers {
-				for _, e := range uerr.UncheckedErrors {
-					if newMarker(e) == k {
-						continue assertLoop
-					}
-				}
-				t.Errorf("Expected assert at %s", k)
-			}
+	// The marked lines that should be reported with these flags.
+	want := map[marker]string{}
+	for m, kind := range markers {
+		if kind == markUnchecked || (blank && kind == markBlank) || (asserts && kind == markAssert) {
+			want[m] = kind
 		}
 	}
 
-	for i, err := range uerr.UncheckedErrors {
-		m := marker{err.Pos.Filename, err.Pos.Line}
-		if !uncheckedMarkers[m] && !blankMarkers[m] && !assertMarkers[m] {
-			t.Errorf("%d: unexpected error: %v", i, err)
+	// Each wanted line must be reported exactly once, and no other line.
+	got := map[marker]int{}
+	for _, err := range check(t, &checker, testPackage) {
+		m := newMarker(err)
+		got[m]++
+		if _, ok := want[m]; !ok {
+			t.Errorf("unexpected error: %v", err)
 		}
 		if err.SelectorName != "" && !strings.Contains(err.Line, err.SelectorName) {
 			t.Errorf("the line '%s' must contain the selector '%s'", err.Line, err.SelectorName)
+		}
+	}
+	for m, kind := range want {
+		if got[m] != 1 {
+			t.Errorf("expected one error at %s (%s), got %d", m, kind, got[m])
 		}
 	}
 }
