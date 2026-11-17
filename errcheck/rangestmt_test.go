@@ -58,23 +58,8 @@ func Checked() iter.Seq2[int, error] { return func(func(int, error) bool) {} }
 
 	var checker Checker
 	checker.Exclusions.Symbols = []string{"rangetest/seqs.Excluded"}
-	pkgs, err := checker.LoadPackages("rangetest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := Result{}
-	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			t.Fatalf("errors loading %s: %v", pkg.ID, pkg.Errors)
-		}
-		result.Append(checker.CheckPackage(pkg))
-	}
-	result = result.Unique()
-
-	if len(result.UncheckedErrors) != 3 {
-		t.Fatalf("expected 3 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-	}
-	for _, e := range result.UncheckedErrors {
+	errs := wantErrors(t, &checker, 3, "rangetest")
+	for _, e := range errs {
 		if strings.Contains(e.Line, "seqs.Excluded()") {
 			t.Errorf("excluded iterator was reported: %v", e)
 		}

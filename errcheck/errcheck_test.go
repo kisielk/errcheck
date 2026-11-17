@@ -97,6 +97,35 @@ func injectPackages(t *testing.T, goMod string, mainGo string) string {
 	return tmpDir
 }
 
+// check loads paths with checker and returns the unique unchecked errors in
+// them. It fails the test if the packages can't be loaded or have errors.
+func check(t *testing.T, checker *Checker, paths ...string) []UncheckedError {
+	t.Helper()
+	pkgs, err := checker.LoadPackages(paths...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Result{}
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			t.Fatalf("errors loading %s: %v", pkg.ID, pkg.Errors)
+		}
+		result.Append(checker.CheckPackage(pkg))
+	}
+	return result.Unique().UncheckedErrors
+}
+
+// wantErrors is like check, but also fails the test unless there are exactly
+// n unchecked errors.
+func wantErrors(t *testing.T, checker *Checker, n int, paths ...string) []UncheckedError {
+	t.Helper()
+	errs := check(t, checker, paths...)
+	if len(errs) != n {
+		t.Errorf("expected %d errors, got %d: %v", n, len(errs), errs)
+	}
+	return errs
+}
+
 // TestUnchecked runs a test against the example files and ensures all unchecked errors are caught.
 func TestUnchecked(t *testing.T) {
 	test(t, 0)
@@ -198,26 +227,7 @@ package custom
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			loadedPackages, err := checker.LoadPackages("github.com/testbuildtags")
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			uerr := &Result{}
-			for _, pkg := range loadedPackages {
-				uerr.Append(checker.CheckPackage(pkg))
-			}
-			*uerr = uerr.Unique()
-			if test.numExpectedErrs == 0 {
-				if len(uerr.UncheckedErrors) != 0 {
-					t.Errorf("expected no errors, but got: %v", uerr)
-				}
-				return
-			}
-
-			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
-			}
+			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testbuildtags")
 		})
 	}
 }
@@ -264,36 +274,14 @@ func main() {
 	t.Run("detected", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false
-		pkgs, err := checker.LoadPackages("typeparamtest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 1 {
-			t.Errorf("expected 1 error, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 1, "typeparamtest")
 	})
 
 	t.Run("excluded", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false
 		checker.Exclusions.Symbols = []string{"typeparamtest/errtypes.As"}
-		pkgs, err := checker.LoadPackages("typeparamtest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 0 {
-			t.Errorf("expected 0 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 0, "typeparamtest")
 	})
 }
 
@@ -373,26 +361,7 @@ require github.com/testlog v0.0.0
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			loadedPackages, err := checker.LoadPackages("github.com/testvendor")
-			if err != nil {
-				t.Fatal(err)
-			}
-			uerr := &Result{}
-			for _, pkg := range loadedPackages {
-				uerr.Append(checker.CheckPackage(pkg))
-			}
-			*uerr = uerr.Unique()
-
-			if test.numExpectedErrs == 0 {
-				if len(uerr.UncheckedErrors) != 0 {
-					t.Errorf("expected no errors, but got: %v", uerr)
-				}
-				return
-			}
-
-			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
-			}
+			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testvendor")
 		})
 	}
 }
@@ -484,26 +453,7 @@ require github.com/testlog v0.0.0
 				pkgs, err := packages.Load(cfg, paths...)
 				return pkgs, err
 			}
-			loadedPackages, err := checker.LoadPackages("github.com/testvendor")
-			if err != nil {
-				t.Fatal(err)
-			}
-			uerr := Result{}
-			for _, pkg := range loadedPackages {
-				uerr.Append(checker.CheckPackage(pkg))
-			}
-			uerr = uerr.Unique()
-
-			if test.numExpectedErrs == 0 {
-				if len(uerr.UncheckedErrors) != 0 {
-					t.Errorf("expected no errors, but got: %v", uerr)
-				}
-				return
-			}
-
-			if test.numExpectedErrs != len(uerr.UncheckedErrors) {
-				t.Errorf("expected: %d errors\nactual:   %d errors", test.numExpectedErrs, len(uerr.UncheckedErrors))
-			}
+			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testvendor")
 		})
 	}
 }
@@ -520,11 +470,7 @@ func test(t *testing.T, f flags) {
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	)
-	loadedPackages, err := checker.LoadPackages(testPackage)
-	if err != nil {
-		t.Fatal(err)
-	}
-	uerr := Result{}
+	uerr := Result{UncheckedErrors: check(t, &checker, testPackage)}
 	numErrors := len(uncheckedMarkers)
 	if blank {
 		numErrors += len(blankMarkers)
@@ -532,13 +478,6 @@ func test(t *testing.T, f flags) {
 	if asserts {
 		numErrors += len(assertMarkers)
 	}
-
-	for _, pkg := range loadedPackages {
-		err := checker.CheckPackage(pkg)
-		uerr.Append(err)
-	}
-
-	uerr = uerr.Unique()
 
 	if len(uerr.UncheckedErrors) != numErrors {
 		t.Errorf("got %d errors, want %d", len(uerr.UncheckedErrors), numErrors)
@@ -631,35 +570,13 @@ func main() {
 	t.Run("default exclusions without blank checks", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = true // ignore assignments to _
-		pkgs, err := checker.LoadPackages("chantest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 2 {
-			t.Errorf("expected 2 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 2, "chantest")
 	})
 
 	t.Run("with blank checks enabled", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false // check assignments to _
-		pkgs, err := checker.LoadPackages("chantest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 4 {
-			t.Errorf("expected 4 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 4, "chantest")
 	})
 }
 

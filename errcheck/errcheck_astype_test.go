@@ -35,8 +35,8 @@ func testErrorsAsType() {
 		return
 	}
 
-	// Single blank assignment
-	_ = errors.AsType[MyCustomError](err)
+	// Both results assigned to blank
+	_, _ = errors.AsType[MyCustomError](err)
 
 	// Direct call statement
 	errors.AsType[MyCustomError](err)
@@ -57,36 +57,14 @@ func testErrorsAsType() {
 	t.Run("ignored with blank assignments enabled", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false
-		pkgs, err := checker.LoadPackages("astypetest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 0 {
-			t.Errorf("expected 0 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 0, "astypetest")
 	})
 
 	t.Run("ignored with default excluded symbols", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false
 		checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
-		pkgs, err := checker.LoadPackages("astypetest")
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := Result{}
-		for _, pkg := range pkgs {
-			result.Append(checker.CheckPackage(pkg))
-		}
-		result = result.Unique()
-		if len(result.UncheckedErrors) != 0 {
-			t.Errorf("expected 0 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-		}
+		wantErrors(t, &checker, 0, "astypetest")
 	})
 }
 
@@ -123,18 +101,7 @@ func testLookalike() {
 			if defaults {
 				checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
 			}
-			pkgs, err := checker.LoadPackages("astypelookalike")
-			if err != nil {
-				t.Fatal(err)
-			}
-			result := Result{}
-			for _, pkg := range pkgs {
-				result.Append(checker.CheckPackage(pkg))
-			}
-			result = result.Unique()
-			if len(result.UncheckedErrors) != 2 {
-				t.Errorf("expected 2 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-			}
+			wantErrors(t, &checker, 2, "astypelookalike")
 		})
 	}
 }

@@ -59,23 +59,8 @@ var (
 
 	var checker Checker
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
-	pkgs, err := checker.LoadPackages("argnametest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := Result{}
-	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			t.Fatalf("errors loading %s: %v", pkg.ID, pkg.Errors)
-		}
-		result.Append(checker.CheckPackage(pkg))
-	}
-	result = result.Unique()
-
-	if len(result.UncheckedErrors) != 3 {
-		t.Fatalf("expected 3 errors, got %d: %v", len(result.UncheckedErrors), result.UncheckedErrors)
-	}
-	for _, e := range result.UncheckedErrors {
+	errs := wantErrors(t, &checker, 3, "argnametest")
+	for _, e := range errs {
 		if strings.Contains(e.Line, "stdos.") {
 			t.Errorf("standard library os call was not excluded: %v", e)
 		}
