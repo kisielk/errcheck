@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -80,17 +81,11 @@ func (f *tagsFlag) String() string {
 }
 
 func (f *tagsFlag) Set(s string) error {
-	if s == "" {
-		return nil
-	}
-	tags := strings.FieldsFunc(s, func(c rune) bool {
+	// FieldsFunc never returns empty fields, so repeated or leading
+	// separators, and an empty s, add no tags.
+	*f = append(*f, strings.FieldsFunc(s, func(c rune) bool {
 		return c == ' ' || c == ','
-	})
-	for _, tag := range tags {
-		if tag != "" {
-			*f = append(*f, tag)
-		}
-	}
+	})...)
 	return nil
 }
 
@@ -100,11 +95,10 @@ func reportResult(e errcheck.Result) {
 		wd = ""
 	}
 	for _, uncheckedError := range e.UncheckedErrors {
-		pos := uncheckedError.Pos.String()
+		pos := uncheckedError.Pos
 		if !abspath {
-			newPos, err := filepath.Rel(wd, pos)
-			if err == nil {
-				pos = newPos
+			if rel, err := filepath.Rel(wd, pos.Filename); err == nil {
+				pos.Filename = rel
 			}
 		}
 
@@ -124,11 +118,13 @@ func logf(msg string, args ...any) {
 
 func mainCmd(args []string) int {
 	var checker errcheck.Checker
-	paths, rc := parseFlags(&checker, args)
-	if rc != exitCodeOk {
-		return rc
-	}
-	if paths == nil {
+	paths, showVersion, err := parseFlags(&checker, args)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return exitCodeOk // usage was printed
+	case err != nil:
+		return exitFatalError // the error was printed
+	case showVersion:
 		fmt.Printf("errcheck %s\n", getVersion())
 		return exitCodeOk
 	}
@@ -180,11 +176,14 @@ func checkPaths(c *errcheck.Checker, paths ...string) (errcheck.Result, error) {
 }
 
 // parseFlags parses command-line flags from args, setting them on checker.
-// It returns any remaining arguments and exit code.
-func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
+// It returns the paths to check, defaulting to ".", and whether -version was
+// given, in which case checker isn't set up. Errors are printed to stderr
+// before they are returned; for -h or -help, the error is flag.ErrHelp and the
+// usage is printed instead.
+func parseFlags(checker *errcheck.Checker, args []string) (paths []string, showVersion bool, err error) {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 
-	var checkAsserts, checkBlanks, showVersion bool
+	var checkAsserts, checkBlanks bool
 
 	flags.BoolVar(&checkBlanks, "blank", false, "if true, check for errors assigned to blank identifier")
 	flags.BoolVar(&checkAsserts, "asserts", false, "if true, check for ignored type assertion results")
@@ -211,7 +210,10 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 	flags.StringVar(&checker.Mod, "mod", "", "module download mode to use: readonly or vendor. See 'go help modules' for more.")
 
 	if err := flags.Parse(args[1:]); err != nil {
-		return nil, exitFatalError
+		return nil, false, err
+	}
+	if showVersion {
+		return nil, true, nil
 	}
 
 	checker.Exclusions.BlankAssignments = !checkBlanks
@@ -225,7 +227,7 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 		excludes, err := errcheck.ReadExcludes(excludeFile)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Could not read exclude file: %v\n", err)
-			return nil, exitFatalError
+			return nil, false, err
 		}
 		checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, excludes...)
 	}
@@ -239,16 +241,11 @@ func parseFlags(checker *errcheck.Checker, args []string) ([]string, int) {
 
 	checker.Exclusions.SymbolRegexpsByPackage = ignore
 
-	if showVersion {
-		return nil, exitCodeOk
-	}
-
-	paths := flags.Args()
+	paths = flags.Args()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
-
-	return paths, exitCodeOk
+	return paths, false, nil
 }
 
 func main() {

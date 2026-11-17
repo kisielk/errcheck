@@ -37,7 +37,7 @@ type parseTestCase struct {
 	tags    []string          // Tags
 	blank   bool              // !BlankAssignments
 	asserts bool              // !TypeAssertions
-	error   int
+	version bool              // -version given
 }
 
 func TestParseFlags(t *testing.T) {
@@ -50,7 +50,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-blank", "-asserts"},
@@ -60,7 +59,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   true,
 			asserts: true,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "foo", "bar"},
@@ -70,7 +68,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-ignore", "fmt:.*,encoding/binary:.*"},
@@ -80,7 +77,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-ignore", "fmt:[FS]?[Pp]rint*"},
@@ -90,7 +86,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-ignore", "[rR]ead|[wW]rite"},
@@ -100,7 +95,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-ignorepkg", "testing"},
@@ -110,7 +104,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-ignorepkg", "testing,foo"},
@@ -120,7 +113,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-tags", "foo"},
@@ -130,7 +122,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{"foo"},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-tags", "foo bar !baz"},
@@ -140,7 +131,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-tags", "foo,bar,!baz"},
@@ -150,7 +140,6 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-tags", "foo   bar   !baz"},
@@ -160,27 +149,14 @@ func TestParseFlags(t *testing.T) {
 			tags:    []string{"foo", "bar", "!baz"},
 			blank:   false,
 			asserts: false,
-			error:   exitCodeOk,
 		},
 		{
 			args:    []string{"errcheck", "-version"},
-			paths:   nil,
-			ignore:  map[string]string{},
-			pkgs:    []string{},
-			tags:    []string{},
-			blank:   false,
-			asserts: false,
-			error:   exitCodeOk,
+			version: true, // the checker isn't set up, and no paths are returned
 		},
 		{
 			args:    []string{"errcheck", "-version", "foo"},
-			paths:   nil,
-			ignore:  map[string]string{},
-			pkgs:    []string{},
-			tags:    []string{},
-			blank:   false,
-			asserts: false,
-			error:   exitCodeOk,
+			version: true, // the checker isn't set up, and no paths are returned
 		},
 	}
 
@@ -210,11 +186,20 @@ func TestParseFlags(t *testing.T) {
 
 	for _, c := range cases {
 		var checker errcheck.Checker
-		p, e := parseFlags(&checker, c.args)
+		p, v, err := parseFlags(&checker, c.args)
 
 		argsStr := strings.Join(c.args, " ")
+		if err != nil {
+			t.Errorf("%q: unexpected error %v", argsStr, err)
+		}
+		if v != c.version {
+			t.Errorf("%q: version got %v want %v", argsStr, v, c.version)
+		}
 		if !slicesEqual(p, c.paths) {
 			t.Errorf("%q: path got %q want %q", argsStr, p, c.paths)
+		}
+		if c.version {
+			continue
 		}
 		if ign := checker.Exclusions.SymbolRegexpsByPackage; !ignoresEqual(ign, c.ignore) {
 			t.Errorf("%q: ignore got %q want %q", argsStr, ign, c.ignore)
@@ -230,9 +215,6 @@ func TestParseFlags(t *testing.T) {
 		}
 		if a := checker.Exclusions.TypeAssertions; a != !c.asserts {
 			t.Errorf("%q: TypeAssertions got %v want %v", argsStr, a, !c.asserts)
-		}
-		if e != c.error {
-			t.Errorf("%q: error got %d want %d", argsStr, e, c.error)
 		}
 	}
 }
@@ -306,5 +288,46 @@ func TestVersionCustom(t *testing.T) {
 	expected := "errcheck v1.20.0\n"
 	if out != expected {
 		t.Errorf("Output is %q, expected %q", out, expected)
+	}
+}
+
+// TestHelp checks that -h prints usage and exits successfully, as programs
+// using the flag package's ExitOnError do.
+func TestHelp(t *testing.T) {
+	for _, arg := range []string{"-h", "-help"} {
+		var exitCode int
+		out := captureOutput(t, func() {
+			exitCode = mainCmd([]string{"errcheck", arg})
+		})
+		if exitCode != exitCodeOk {
+			t.Errorf("%s: exit code is %d, expected %d", arg, exitCode, exitCodeOk)
+		}
+		if !strings.Contains(out, "Usage of errcheck") {
+			t.Errorf("%s: output %q does not contain usage", arg, out)
+		}
+	}
+}
+
+// TestFlagErrors checks that bad flags and a missing exclude file are
+// reported, and exit with exitFatalError.
+func TestFlagErrors(t *testing.T) {
+	cases := []struct {
+		args []string
+		out  string
+	}{
+		{[]string{"errcheck", "-nosuchflag"}, "flag provided but not defined"},
+		{[]string{"errcheck", "-exclude", "testdata/no_such_file"}, "Could not read exclude file"},
+	}
+	for _, c := range cases {
+		var exitCode int
+		out := captureOutput(t, func() {
+			exitCode = mainCmd(c.args)
+		})
+		if exitCode != exitFatalError {
+			t.Errorf("%q: exit code is %d, expected %d", c.args, exitCode, exitFatalError)
+		}
+		if !strings.Contains(out, c.out) {
+			t.Errorf("%q: output %q does not contain %q", c.args, out, c.out)
+		}
 	}
 }
