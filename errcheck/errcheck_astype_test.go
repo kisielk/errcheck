@@ -88,8 +88,8 @@ func testLookalike() {
 
 	// A local variable named errors shadows the package.
 	errors := notErrors{}
-	errors.AsType(err)
-	_, _ = errors.AsType(err)
+	errors.AsType(err) // UNCHECKED
+	_, _ = errors.AsType(err) // BLANK
 }
 `
 	useTempModule(t, map[string]string{"go.mod": testGoMod, "main.go": testMain})
@@ -101,7 +101,7 @@ func testLookalike() {
 			if defaults {
 				checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
 			}
-			wantErrors(t, &checker, 2, "astypelookalike")
+			wantMarked(t, &checker, "astypelookalike")
 		})
 	}
 }

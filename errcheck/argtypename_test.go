@@ -1,9 +1,6 @@
 package errcheck
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 // TestArgTypeNameOsLookalike checks that the "fmt.Fprintf(os.Stdout)"-style
 // default exclusions match only the standard library's os.Stdout and
@@ -28,12 +25,12 @@ func main() {
 	fmt.Fprintln(stdos.Stderr, "x")
 
 	// A different package that is also named os: not excluded.
-	fmt.Fprintf(os.Stdout, "x")
-	fmt.Fprintln(os.Stderr, "x")
+	fmt.Fprintf(os.Stdout, "x") // UNCHECKED
+	fmt.Fprintln(os.Stderr, "x") // UNCHECKED
 
 	// Parenthesized arguments are matched the same way.
 	fmt.Fprintf((stdos.Stdout), "x")
-	fmt.Fprintf((os.Stdout), "x")
+	fmt.Fprintf((os.Stdout), "x") // UNCHECKED
 }
 `
 	const lookalikeOs = `package os
@@ -55,10 +52,5 @@ var (
 
 	var checker Checker
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
-	errs := wantErrors(t, &checker, 3, "argnametest")
-	for _, e := range errs {
-		if strings.Contains(e.Line, "stdos.") {
-			t.Errorf("standard library os call was not excluded: %v", e)
-		}
-	}
+	wantMarked(t, &checker, "argnametest")
 }

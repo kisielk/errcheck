@@ -1,9 +1,6 @@
 package errcheck
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 // TestRangeStmtExclusions checks that ranging over a call to an excluded
 // iterator function is not reported, whether its error is left out or
@@ -26,15 +23,15 @@ func main() {
 	}
 
 	// Reported.
-	for range seqs.Checked() {
+	for range seqs.Checked() { // UNCHECKED
 	}
-	for i, _ := range seqs.Checked() {
+	for i, _ := range seqs.Checked() { // BLANK
 		_ = i
 	}
 
 	// Reported: there is no call to look up in the exclusion list.
 	seq := seqs.Excluded()
-	for range seq {
+	for range seq { // UNCHECKED
 	}
 }
 `
@@ -54,10 +51,5 @@ func Checked() iter.Seq2[int, error] { return func(func(int, error) bool) {} }
 
 	var checker Checker
 	checker.Exclusions.Symbols = []string{"rangetest/seqs.Excluded"}
-	errs := wantErrors(t, &checker, 3, "rangetest")
-	for _, e := range errs {
-		if strings.Contains(e.Line, "seqs.Excluded()") {
-			t.Errorf("excluded iterator was reported: %v", e)
-		}
-	}
+	wantMarked(t, &checker, "rangetest")
 }

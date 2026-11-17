@@ -15,51 +15,75 @@ import (
 
 const testPackage = "github.com/kisielk/errcheck/testdata"
 
-// Marker comments in testPackage, put on lines where an error should be
-// reported. Blank and assert markers only apply when those checks are on.
+// Marker comments, put at the end of lines where an error should be reported.
+// Blank and assert markers only apply when those checks are enabled.
 const (
 	markUnchecked = "UNCHECKED"
 	markBlank     = "BLANK"
 	markAssert    = "ASSERT"
 )
 
-// markers maps each marked line in testPackage to its marker.
-var markers = map[marker]string{}
-
-// marker is a line in a file.
-type marker struct {
+// markedLine is a line in a file.
+type markedLine struct {
 	file string
 	line int
 }
 
-func newMarker(e UncheckedError) marker {
-	return marker{e.Pos.Filename, e.Pos.Line}
+func newMarkedLine(e UncheckedError) markedLine {
+	return markedLine{e.Pos.Filename, e.Pos.Line}
 }
 
-func (m marker) String() string {
+func (m markedLine) String() string {
 	return fmt.Sprintf("%s:%d", m.file, m.line)
 }
 
-func init() {
-	cfg := &packages.Config{
-		Mode:  packages.NeedSyntax | packages.NeedTypes,
-		Tests: true,
-	}
-	pkgs, err := packages.Load(cfg, testPackage)
-	if err != nil {
-		panic(fmt.Errorf("failed to import test package: %v", err))
-	}
+// wantedMarkers returns the marked lines in pkgs that checker should report,
+// mapped to their markers.
+func wantedMarkers(checker *Checker, pkgs []*packages.Package) map[markedLine]string {
+	want := map[markedLine]string{}
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, comment := range file.Comments {
-				switch text := strings.TrimSuffix(comment.Text(), "\n"); text {
-				case markUnchecked, markBlank, markAssert:
+				text := strings.TrimSuffix(comment.Text(), "\n")
+				if text == markUnchecked ||
+					(!checker.Exclusions.BlankAssignments && text == markBlank) ||
+					(!checker.Exclusions.TypeAssertions && text == markAssert) {
 					pos := pkg.Fset.Position(comment.Pos())
-					markers[marker{pos.Filename, pos.Line}] = text
+					want[markedLine{pos.Filename, pos.Line}] = text
 				}
 			}
 		}
 	}
+	return want
+}
+
+// wantMarked checks paths with checker, and fails the test unless each line
+// marked by a comment is reported exactly once, and no other line is. Which
+// markers apply depends on checker's exclusions; see wantedMarkers. It
+// returns the errors, for tests that check more about them.
+func wantMarked(t *testing.T, checker *Checker, paths ...string) []UncheckedError {
+	t.Helper()
+	pkgs := load(t, checker, paths...)
+	want := wantedMarkers(checker, pkgs)
+
+	errs := checkLoaded(checker, pkgs)
+	got := map[markedLine]int{}
+	for _, err := range errs {
+		m := newMarkedLine(err)
+		got[m]++
+		if _, ok := want[m]; !ok {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if err.SelectorName != "" && !strings.Contains(err.Line, err.SelectorName) {
+			t.Errorf("the line '%s' must contain the selector '%s'", err.Line, err.SelectorName)
+		}
+	}
+	for m, kind := range want {
+		if got[m] != 1 {
+			t.Errorf("expected one error at %s (%s), got %d", m, kind, got[m])
+		}
+	}
+	return errs
 }
 
 type flags uint
@@ -102,22 +126,36 @@ func useTempModule(t *testing.T, files map[string]string, env ...string) string 
 	return tmpDir
 }
 
-// check loads paths with checker and returns the unique unchecked errors in
-// them. It fails the test if the packages can't be loaded or have errors.
-func check(t *testing.T, checker *Checker, paths ...string) []UncheckedError {
+// load loads paths with checker. It fails the test if the packages can't be
+// loaded or have errors.
+func load(t *testing.T, checker *Checker, paths ...string) []*packages.Package {
 	t.Helper()
 	pkgs, err := checker.LoadPackages(paths...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := Result{}
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
 			t.Fatalf("errors loading %s: %v", pkg.ID, pkg.Errors)
 		}
+	}
+	return pkgs
+}
+
+// checkLoaded returns the unique unchecked errors that checker finds in pkgs.
+func checkLoaded(checker *Checker, pkgs []*packages.Package) []UncheckedError {
+	result := Result{}
+	for _, pkg := range pkgs {
 		result.Append(checker.CheckPackage(pkg))
 	}
 	return result.Unique().UncheckedErrors
+}
+
+// check loads paths with checker and returns the unique unchecked errors in
+// them. It fails the test if the packages can't be loaded or have errors.
+func check(t *testing.T, checker *Checker, paths ...string) []UncheckedError {
+	t.Helper()
+	return checkLoaded(checker, load(t, checker, paths...))
 }
 
 // wantErrors is like check, but also fails the test unless there are exactly
@@ -157,8 +195,7 @@ package custom
 import "fmt"
 
 func Print1() {
-	// returns an error that is not checked
-	fmt.Fprintln(nil)
+	fmt.Fprintln(nil) // UNCHECKED
 }`
 		// uses "custom2" build tag and contains 1 unchecked error
 		testBuildCustom2Tag = `
@@ -169,8 +206,7 @@ package custom
 import "fmt"
 
 func Print2() {
-	// returns an error that is not checked
-	fmt.Fprintln(nil)
+	fmt.Fprintln(nil) // UNCHECKED
 }`
 		// included so that package is not empty when built without specifying tags
 		testDoc = `
@@ -186,39 +222,19 @@ package custom
 		"doc.go":     testDoc,
 	}, "GOPATH="+t.TempDir())
 
-	cases := []struct {
-		tags            []string
-		numExpectedErrs int
-	}{
-		// with no tags specified, main is ignored and there are no errors
-		{
-			tags:            nil,
-			numExpectedErrs: 0,
-		},
-		// specifying "custom1" tag includes file with 1 error
-		{
-			tags:            []string{"custom1"},
-			numExpectedErrs: 1,
-		},
-		// specifying "custom1" and "custom2" tags includes 2 files with 1 error each
-		{
-			tags:            []string{"custom1", "custom2"},
-			numExpectedErrs: 2,
-		},
-	}
-
-	for _, test := range cases {
-		testName := strings.Join(test.tags, ",")
-		t.Run(testName, func(t *testing.T) {
+	// Only files whose tags are given are checked, so only their marked
+	// errors are expected: none without tags, then one per tagged file.
+	for _, tags := range [][]string{nil, {"custom1"}, {"custom1", "custom2"}} {
+		t.Run(strings.Join(tags, ","), func(t *testing.T) {
 			var checker Checker
-			checker.Tags = test.tags
-			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testbuildtags")
+			checker.Tags = tags
+			// The count also checks that untagged files aren't loaded, which
+			// the markers alone can't: their markers would be loaded too.
+			if errs := wantMarked(t, &checker, "github.com/testbuildtags"); len(errs) != len(tags) {
+				t.Errorf("expected %d errors, got %d: %v", len(tags), len(errs), errs)
+			}
 		})
 	}
-}
-
-func TestWhitelist(t *testing.T) {
-
 }
 
 func TestTypeParameterizedFunctionExclude(t *testing.T) {
@@ -243,7 +259,7 @@ func (e MyError) Error() string { return string(e) }
 
 func main() {
 	var err error = MyError("test")
-	_, ok := errtypes.As[MyError](err)
+	_, ok := errtypes.As[MyError](err) // BLANK
 	_ = ok
 }
 `
@@ -256,7 +272,7 @@ func main() {
 	t.Run("detected", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false
-		wantErrors(t, &checker, 1, "typeparamtest")
+		wantMarked(t, &checker, "typeparamtest")
 	})
 
 	t.Run("excluded", func(t *testing.T) {
@@ -294,6 +310,7 @@ func TestIgnore(t *testing.T) {
 
 	func main() {
 		// returns an error that is not checked
+		// there is no marker here since whether its flagged depends on the options in the test case
 		testlog.Info()
 	}`
 	useTempModule(t, testVendorModule(testVendorMain), "GOPATH="+t.TempDir(), "GOFLAGS=-mod=vendor")
@@ -339,6 +356,7 @@ func TestWithoutGeneratedCode(t *testing.T) {
 
 	func main() {
 		// returns an error that is not checked
+		// there is no marker here since whether its flagged depends on the options in the test case
 		testlog.Info()
 	}`
 
@@ -398,31 +416,7 @@ func test(t *testing.T, f flags) {
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols,
 		fmt.Sprintf("(%s.ErrorMakerInterface).MakeNilError", testPackage),
 	)
-	// The marked lines that should be reported with these flags.
-	want := map[marker]string{}
-	for m, kind := range markers {
-		if kind == markUnchecked || (blank && kind == markBlank) || (asserts && kind == markAssert) {
-			want[m] = kind
-		}
-	}
-
-	// Each wanted line must be reported exactly once, and no other line.
-	got := map[marker]int{}
-	for _, err := range check(t, &checker, testPackage) {
-		m := newMarker(err)
-		got[m]++
-		if _, ok := want[m]; !ok {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if err.SelectorName != "" && !strings.Contains(err.Line, err.SelectorName) {
-			t.Errorf("the line '%s' must contain the selector '%s'", err.Line, err.SelectorName)
-		}
-	}
-	for m, kind := range want {
-		if got[m] != 1 {
-			t.Errorf("expected one error at %s (%s), got %d", m, kind, got[m])
-		}
-	}
+	wantMarked(t, &checker, testPackage)
 }
 
 func TestChannelReceive(t *testing.T) {
@@ -442,8 +436,8 @@ func main() {
 	intChan := make(chan int)
 
 	// Standalone receive expressions (discarded error)
-	<-errChan
-	<-customErrChan
+	<-errChan // UNCHECKED
+	<-customErrChan // UNCHECKED
 
 	// Assigned receives (error used)
 	err := <-errChan
@@ -452,8 +446,8 @@ func main() {
 	_ = customErr
 
 	// Blank assignments
-	_ = <-errChan
-	_, ok := <-errChan
+	_ = <-errChan // BLANK
+	_, ok := <-errChan // BLANK
 	_ = ok
 
 	// Non-error channels
@@ -470,13 +464,13 @@ func main() {
 	t.Run("default exclusions without blank checks", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = true // ignore assignments to _
-		wantErrors(t, &checker, 2, "chantest")
+		wantMarked(t, &checker, "chantest")
 	})
 
 	t.Run("with blank checks enabled", func(t *testing.T) {
 		var checker Checker
 		checker.Exclusions.BlankAssignments = false // check assignments to _
-		wantErrors(t, &checker, 4, "chantest")
+		wantMarked(t, &checker, "chantest")
 	})
 }
 
@@ -488,7 +482,7 @@ func TestUseTempModule(t *testing.T) {
 	}
 
 	var tmpDir string
-	t.Run("injection and overrides", func(t *testing.T) {
+	t.Run("files and loader", func(t *testing.T) {
 		tmpDir = useTempModule(t, files)
 
 		for name, want := range files {
