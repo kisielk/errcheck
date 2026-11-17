@@ -52,7 +52,7 @@ func testErrorsAsType() {
 	}
 }
 `
-	injectPackages(t, testGoMod, testMain)
+	useTempModule(t, map[string]string{"go.mod": testGoMod, "main.go": testMain})
 
 	t.Run("ignored with blank assignments enabled", func(t *testing.T) {
 		var checker Checker
@@ -92,7 +92,7 @@ func testLookalike() {
 	_, _ = errors.AsType(err)
 }
 `
-	injectPackages(t, testGoMod, testMain)
+	useTempModule(t, map[string]string{"go.mod": testGoMod, "main.go": testMain})
 
 	for _, defaults := range []bool{false, true} {
 		t.Run(fmt.Sprintf("default excluded symbols %v", defaults), func(t *testing.T) {

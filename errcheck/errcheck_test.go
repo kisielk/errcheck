@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"go/token"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -73,17 +73,23 @@ const (
 	CheckBlank
 )
 
-// injectPackages writes goMod and mainGo to a temporary directory, and overrides
-// loadPackages to load packages from that directory for the duration of the test.
-// It returns the path to the temporary directory.
-func injectPackages(t *testing.T, goMod string, mainGo string) string {
+// useTempModule writes files to a temporary directory, and overrides
+// loadPackages to load packages from that directory for the duration of the
+// test. The keys of files are slash-separated paths relative to the directory,
+// such as "go.mod" or "sub/sub.go", and parent directories are created as
+// needed. If env is given, it is added to the environment packages are loaded
+// with. It returns the path to the temporary directory.
+func useTempModule(t *testing.T, files map[string]string, env ...string) string {
 	t.Helper()
 	tmpDir := t.TempDir()
-	if err := os.WriteFile(path.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(tmpDir, "main.go"), []byte(mainGo), 0644); err != nil {
-		t.Fatal(err)
+	for name, content := range files {
+		file := filepath.Join(tmpDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	origLoadPackages := loadPackages
@@ -91,6 +97,9 @@ func injectPackages(t *testing.T, goMod string, mainGo string) string {
 
 	loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
 		cfg.Dir = tmpDir
+		if len(env) > 0 {
+			cfg.Env = append(os.Environ(), env...)
+		}
 		return packages.Load(cfg, paths...)
 	}
 
@@ -174,24 +183,12 @@ package custom
 `
 	)
 
-	tmpGopath := t.TempDir()
-	testBuildTagsDir := path.Join(tmpGopath, "src", "github.com/testbuildtags")
-	if err := os.MkdirAll(testBuildTagsDir, 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-
-	if err := os.WriteFile(path.Join(testBuildTagsDir, "go.mod"), []byte("module github.com/testbuildtags"), 0644); err != nil {
-		t.Fatalf("Failed to write testbuildtags go.mod: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testBuildTagsDir, "custom1.go"), []byte(testBuildCustom1Tag), 0644); err != nil {
-		t.Fatalf("Failed to write testbuildtags custom1: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testBuildTagsDir, "custom2.go"), []byte(testBuildCustom2Tag), 0644); err != nil {
-		t.Fatalf("Failed to write testbuildtags custom2: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testBuildTagsDir, "doc.go"), []byte(testDoc), 0644); err != nil {
-		t.Fatalf("Failed to write testbuildtags doc: %v", err)
-	}
+	useTempModule(t, map[string]string{
+		"go.mod":     "module github.com/testbuildtags",
+		"custom1.go": testBuildCustom1Tag,
+		"custom2.go": testBuildCustom2Tag,
+		"doc.go":     testDoc,
+	}, "GOPATH="+t.TempDir())
 
 	cases := []struct {
 		tags            []string
@@ -219,14 +216,6 @@ package custom
 		t.Run(testName, func(t *testing.T) {
 			var checker Checker
 			checker.Tags = test.tags
-
-			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
-					"GOPATH="+tmpGopath)
-				cfg.Dir = testBuildTagsDir
-				pkgs, err := packages.Load(cfg, paths...)
-				return pkgs, err
-			}
 			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testbuildtags")
 		})
 	}
@@ -262,14 +251,11 @@ func main() {
 	_ = ok
 }
 `
-	tmpDir := injectPackages(t, testGoMod, testMain)
-	libDir := path.Join(tmpDir, "errtypes")
-	if err := os.MkdirAll(libDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path.Join(libDir, "errtypes.go"), []byte(testLib), 0644); err != nil {
-		t.Fatal(err)
-	}
+	useTempModule(t, map[string]string{
+		"go.mod":               testGoMod,
+		"main.go":              testMain,
+		"errtypes/errtypes.go": testLib,
+	})
 
 	t.Run("detected", func(t *testing.T) {
 		var checker Checker
@@ -285,11 +271,26 @@ func main() {
 	})
 }
 
-func TestIgnore(t *testing.T) {
-	const testVendorGoMod = `module github.com/testvendor
+// testVendorModule returns the files of the module github.com/testvendor,
+// with mainGo as its main.go. It vendors a package github.com/testlog whose
+// Info function returns an error.
+func testVendorModule(mainGo string) map[string]string {
+	return map[string]string{
+		"go.mod": `module github.com/testvendor
 
 require github.com/testlog v0.0.0
-`
+`,
+		"main.go": mainGo,
+		"vendor/github.com/testlog/testlog.go": `
+	package testlog
+
+	func Info() error {
+		return nil
+	}`,
+	}
+}
+
+func TestIgnore(t *testing.T) {
 	const testVendorMain = `
 	package main
 
@@ -299,32 +300,7 @@ require github.com/testlog v0.0.0
 		// returns an error that is not checked
 		testlog.Info()
 	}`
-	const testLog = `
-	package testlog
-
-	func Info() error {
-		return nil
-	}`
-
-	// copy testvendor directory into directory for test
-	tmpGopath := t.TempDir()
-	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
-	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-
-	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
-		t.Fatalf("Failed to write testvendor go.mod: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
-		t.Fatalf("Failed to write testvendor main: %v", err)
-	}
-	if err := os.MkdirAll(path.Join(testVendorDir, "vendor/github.com/testlog"), 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
-		t.Fatalf("Failed to write testlog: %v", err)
-	}
+	useTempModule(t, testVendorModule(testVendorMain), "GOPATH="+t.TempDir(), "GOFLAGS=-mod=vendor")
 
 	cases := []struct {
 		ignore          map[string]*regexp.Regexp
@@ -338,7 +314,7 @@ require github.com/testlog v0.0.0
 		// ignoring vendored import works
 		{
 			ignore: map[string]*regexp.Regexp{
-				path.Join("github.com/testvendor/vendor/github.com/testlog"): regexp.MustCompile("Info"),
+				"github.com/testvendor/vendor/github.com/testlog": regexp.MustCompile("Info"),
 			},
 		},
 		// non-vendored path ignores vendored import
@@ -353,24 +329,12 @@ require github.com/testlog v0.0.0
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var checker Checker
 			checker.Exclusions.SymbolRegexpsByPackage = test.ignore
-			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
-					"GOPATH="+tmpGopath,
-					"GOFLAGS=-mod=vendor")
-				cfg.Dir = testVendorDir
-				pkgs, err := packages.Load(cfg, paths...)
-				return pkgs, err
-			}
 			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testvendor")
 		})
 	}
 }
 
 func TestWithoutGeneratedCode(t *testing.T) {
-	const testVendorGoMod = `module github.com/testvendor
-
-require github.com/testlog v0.0.0
-`
 	const testVendorMain = `
 	// Code generated by protoc-gen-go. DO NOT EDIT.
 	package main
@@ -381,32 +345,6 @@ require github.com/testlog v0.0.0
 		// returns an error that is not checked
 		testlog.Info()
 	}`
-	const testLog = `
-	package testlog
-
-	func Info() error {
-		return nil
-	}`
-
-	// copy testvendor directory into directory for test
-	tmpGopath := t.TempDir()
-	testVendorDir := path.Join(tmpGopath, "src", "github.com/testvendor")
-	if err := os.MkdirAll(testVendorDir, 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-
-	if err := os.WriteFile(path.Join(testVendorDir, "go.mod"), []byte(testVendorGoMod), 0755); err != nil {
-		t.Fatalf("Failed to write testvendor go.mod: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testVendorDir, "main.go"), []byte(testVendorMain), 0755); err != nil {
-		t.Fatalf("Failed to write testvendor main: %v", err)
-	}
-	if err := os.MkdirAll(path.Join(testVendorDir, "vendor/github.com/testlog"), 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-	if err := os.WriteFile(path.Join(testVendorDir, "vendor/github.com/testlog/testlog.go"), []byte(testLog), 0755); err != nil {
-		t.Fatalf("Failed to write testlog: %v", err)
-	}
 
 	cases := []struct {
 		withoutGeneratedCode bool
@@ -441,18 +379,12 @@ require github.com/testlog v0.0.0
 				}
 				checker.Mod = "vendor"
 			}
-			loadPackages = func(cfg *packages.Config, paths ...string) ([]*packages.Package, error) {
-				cfg.Env = append(os.Environ(),
-					"GOPATH="+tmpGopath)
-
-				if !test.withModVendor {
-					cfg.Env = append(cfg.Env,
-						"GOFLAGS=-mod=vendor")
-				}
-				cfg.Dir = testVendorDir
-				pkgs, err := packages.Load(cfg, paths...)
-				return pkgs, err
+			// Without checker.Mod, select the vendor directory through GOFLAGS.
+			env := []string{"GOPATH=" + t.TempDir()}
+			if !test.withModVendor {
+				env = append(env, "GOFLAGS=-mod=vendor")
 			}
+			useTempModule(t, testVendorModule(testVendorMain), env...)
 			wantErrors(t, &checker, test.numExpectedErrs, "github.com/testvendor")
 		})
 	}
@@ -565,7 +497,7 @@ func main() {
 	_ = ok2
 }
 `
-	injectPackages(t, testGoMod, testMain)
+	useTempModule(t, map[string]string{"go.mod": testGoMod, "main.go": testMain})
 
 	t.Run("default exclusions without blank checks", func(t *testing.T) {
 		var checker Checker
@@ -580,34 +512,47 @@ func main() {
 	})
 }
 
-func TestInjectPackages(t *testing.T) {
-	const testMod = "module helpertest\n\ngo 1.18\n"
-	const testMain = "package main\n\nfunc main() {}\n"
+func TestUseTempModule(t *testing.T) {
+	files := map[string]string{
+		"go.mod":     "module helpertest\n\ngo 1.18\n",
+		"main.go":    "package main\n\nfunc main() {}\n",
+		"sub/sub.go": "package sub\n",
+	}
 
 	var tmpDir string
 	t.Run("injection and overrides", func(t *testing.T) {
-		tmpDir = injectPackages(t, testMod, testMain)
+		tmpDir = useTempModule(t, files)
 
-		modBytes, err := os.ReadFile(path.Join(tmpDir, "go.mod"))
-		if err != nil {
-			t.Fatalf("failed to read go.mod: %v", err)
-		}
-		if string(modBytes) != testMod {
-			t.Errorf("go.mod content mismatch: got %q, want %q", string(modBytes), testMod)
-		}
-
-		mainBytes, err := os.ReadFile(path.Join(tmpDir, "main.go"))
-		if err != nil {
-			t.Fatalf("failed to read main.go: %v", err)
-		}
-		if string(mainBytes) != testMain {
-			t.Errorf("main.go content mismatch: got %q, want %q", string(mainBytes), testMain)
+		for name, want := range files {
+			got, err := os.ReadFile(filepath.Join(tmpDir, filepath.FromSlash(name)))
+			if err != nil {
+				t.Fatalf("failed to read %s: %v", name, err)
+			}
+			if string(got) != want {
+				t.Errorf("%s content mismatch: got %q, want %q", name, got, want)
+			}
 		}
 
 		var cfg packages.Config
 		_, _ = loadPackages(&cfg, "helpertest")
 		if cfg.Dir != tmpDir {
 			t.Errorf("expected cfg.Dir to be %q, got %q", tmpDir, cfg.Dir)
+		}
+		if cfg.Env != nil {
+			t.Errorf("expected cfg.Env to be unset without env, got %d entries", len(cfg.Env))
+		}
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		useTempModule(t, files, "HELPERTEST=1")
+
+		var cfg packages.Config
+		_, _ = loadPackages(&cfg, "helpertest")
+		if !slices.Contains(cfg.Env, "HELPERTEST=1") {
+			t.Errorf("expected cfg.Env to contain HELPERTEST=1")
+		}
+		if len(cfg.Env) != len(os.Environ())+1 {
+			t.Errorf("expected cfg.Env to be the environment plus HELPERTEST=1, got %d entries", len(cfg.Env))
 		}
 	})
 

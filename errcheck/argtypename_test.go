@@ -1,8 +1,6 @@
 package errcheck
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -49,13 +47,11 @@ var (
 	Stderr writer
 )
 `
-	dir := injectPackages(t, testGoMod, testMain)
-	if err := os.Mkdir(filepath.Join(dir, "os"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "os", "os.go"), []byte(lookalikeOs), 0644); err != nil {
-		t.Fatal(err)
-	}
+	useTempModule(t, map[string]string{
+		"go.mod":   testGoMod,
+		"main.go":  testMain,
+		"os/os.go": lookalikeOs,
+	})
 
 	var checker Checker
 	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
