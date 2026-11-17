@@ -14,6 +14,7 @@ go 1.26
 
 import (
 	"errors"
+	. "errors"
 	stderrors "errors"
 	"io/fs"
 	"os"
@@ -44,6 +45,10 @@ func testErrorsAsType() {
 	// Renamed import of the standard library errors package
 	stderrors.AsType[MyCustomError](err)
 	_, _ = stderrors.AsType[MyCustomError](err)
+
+	// Dot import of the standard library errors package
+	AsType[MyCustomError](err)
+	_, _ = AsType[MyCustomError](err)
 
 	// Standard library pointer error type
 	_, openErr := os.Open("non-existent")

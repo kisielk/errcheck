@@ -274,6 +274,7 @@ func getSelectorName(sel *ast.SelectorExpr) string {
 
 // namesForExcludeCheck returns the names to look up in the exclusion list
 // for a call of fn through the selector sel, as returned by selectorAndFunc.
+// sel is nil for a call by name alone, like "F()".
 //
 // For a package-level function or a method of a concrete type, this is just
 // fn's full name, such as "fmt.Printf" or "(*bytes.Buffer).Write".
@@ -331,8 +332,11 @@ func (v *visitor) argTypeName(expr ast.Expr) string {
 }
 
 // excludeCall reports whether call, a call of fn through the selector sel,
-// matches the exclusion list, either by name alone or by name and the
-// type of its first argument.
+// matches the exclusion list. sel is nil if fn is called by name alone.
+//
+// A call matches if the list contains one of the names from
+// namesForExcludeCheck, either alone or followed by the type of the call's
+// first argument, such as "fmt.Fprintf(*bytes.Buffer)".
 func (v *visitor) excludeCall(call *ast.CallExpr, sel *ast.SelectorExpr, fn *types.Func) bool {
 	var arg0 string
 	if len(call.Args) > 0 {
@@ -352,12 +356,18 @@ func (v *visitor) excludeCall(call *ast.CallExpr, sel *ast.SelectorExpr, fn *typ
 // ignoreCall reports whether call is excluded from checking, by the
 // exclusion list, the ignore regexps, or the errors.AsType special case.
 func (v *visitor) ignoreCall(call *ast.CallExpr) bool {
-	// The exclusion list and errors.AsType only apply to selector calls
-	// like "pkg.F()" or "x.M()". Look up the selector once for both.
-	if sel, fn, ok := v.selectorAndFunc(call); ok {
-		if v.excludeCall(call, sel, fn) || isErrorsAsType(fn) {
-			return true
+	// The exclusion list and errors.AsType apply to calls of declared
+	// functions and methods, through a selector like "pkg.F()" or "x.M()",
+	// or by name alone, like "F()" in F's own package or after a dot import.
+	// sel is nil for calls by name.
+	sel, fn, ok := v.selectorAndFunc(call)
+	if !ok {
+		if id, isIdent := baseCallExpr(call.Fun).(*ast.Ident); isIdent {
+			fn, ok = v.typesInfo.Uses[id].(*types.Func)
 		}
+	}
+	if ok && (v.excludeCall(call, sel, fn) || isErrorsAsType(fn)) {
+		return true
 	}
 
 	// Try to get an identifier.
@@ -413,10 +423,10 @@ func baseCallExpr(fun ast.Expr) ast.Expr {
 	}
 }
 
-// isErrorsAsType reports whether fn, a called function as returned by
-// selectorAndFunc, is the standard library's errors.AsType. It goes by the
-// resolved function, not by how the call is spelled, so a renamed import
-// still matches and a local variable or other package named "errors" does not.
+// isErrorsAsType reports whether fn, a called function, is the standard
+// library's errors.AsType. It goes by the resolved function, not by how the
+// call is spelled, so a renamed or dot import still matches and a local
+// variable or other package named "errors" does not.
 func isErrorsAsType(fn *types.Func) bool {
 	return fn.Name() == "AsType" && fn.Pkg() != nil && fn.Pkg().Path() == "errors"
 }
