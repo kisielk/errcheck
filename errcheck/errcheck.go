@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -221,6 +222,30 @@ type visitor struct {
 	checkTypeAsserts      bool
 	lines                 map[string][]string
 	exclude               map[string]bool
+
+	// Type-switch narrowing state (used only when checkTypeAsserts is true).
+	//
+	// currentFn is the immediately enclosing *ast.FuncDecl or *ast.FuncLit,
+	// and closureMutated lazily records variables modified inside nested
+	// function literals within currentFn.
+	//
+	// narrowed maps a local variable x to its active enclosing type-switch
+	// case type lists. Each outer slice element represents one enclosing
+	// CaseClause on x, and its inner slice holds the types listed in that
+	// case. For example, in:
+	//
+	//   switch x.(type) {
+	//   case io.ReadCloser, *bytes.Buffer: // inner slice: [io.ReadCloser, *bytes.Buffer]
+	//       switch x.(type) {
+	//       case *bytes.Buffer:            // inner slice: [*bytes.Buffer]
+	//       }
+	//   }
+	//
+	// narrowed[x] holds [[io.ReadCloser, *bytes.Buffer], [*bytes.Buffer]].
+	currentFn        ast.Node
+	closureInfoReady bool
+	closureMutated   map[*types.Var]bool
+	narrowed         map[*types.Var][][]types.Type
 
 	errors []UncheckedError
 }
@@ -567,9 +592,248 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			return nil
 		}
 
+	case *ast.FuncDecl:
+		// Scope type-switch narrowing to this function body so outer
+		// narrowing cannot leak across function boundaries.
+		if v.checkTypeAsserts {
+			if stmt.Recv != nil {
+				ast.Walk(v, stmt.Recv)
+			}
+			if stmt.Type != nil {
+				ast.Walk(v, stmt.Type)
+			}
+			if stmt.Body != nil {
+				v.walkFuncBody(stmt, stmt.Body)
+			}
+			return nil
+		}
+
+	case *ast.FuncLit:
+		// A closure may run after the enclosing case finishes and the
+		// switched variable has been reassigned, so start with empty
+		// narrowing inside the closure body:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       defer func() { _ = x.(string) }() // unchecked
+		//   }
+		//   x = 42
+		if v.checkTypeAsserts {
+			if stmt.Type != nil {
+				ast.Walk(v, stmt.Type)
+			}
+			if stmt.Body != nil {
+				v.walkFuncBody(stmt, stmt.Body)
+			}
+			return nil
+		}
+
+	case *ast.TypeSwitchStmt:
+		// Track per-case type narrowing on the switched variable:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       _ = x.(string) // guaranteed not to panic
+		//   }
+		if v.checkTypeAsserts {
+			v.walkTypeSwitchStmt(stmt)
+			return nil
+		}
+
 	case *ast.AssignStmt:
+		// Evaluate the assignment's expressions before invalidating LHS
+		// variables so assertions on the RHS still see active narrowing,
+		// while subsequent statements see that the LHS was overwritten:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       s := x.(string) // safe: x is still string on RHS
+		//       x = 42          // invalidates narrowing on x
+		//       _ = x.(string)  // unchecked
+		//   }
 		followed := v.checkAssignment(stmt.Lhs, stmt.Rhs)
-		if !followed {
+		if len(v.narrowed) == 0 {
+			if !followed {
+				return nil
+			}
+			return v
+		}
+		if followed {
+			for _, lhs := range stmt.Lhs {
+				ast.Walk(v, lhs)
+			}
+			for _, rhs := range stmt.Rhs {
+				ast.Walk(v, rhs)
+			}
+		}
+		for _, lhs := range stmt.Lhs {
+			v.invalidateIdent(lhs)
+		}
+		return nil
+
+	case *ast.IncDecStmt:
+		// Walk the operand first, then invalidate narrowing if it is a
+		// tracked variable (e.g. x++).
+		if len(v.narrowed) > 0 {
+			ast.Walk(v, stmt.X)
+			v.invalidateIdent(stmt.X)
+			return nil
+		}
+
+	case *ast.UnaryExpr:
+		// Taking the address of a narrowed variable allows indirect
+		// mutation of its dynamic type through the pointer:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       setAny(&x)     // may store a non-string into *(&x)
+		//       _ = x.(string) // unchecked
+		//   }
+		if len(v.narrowed) > 0 && stmt.Op == token.AND {
+			v.invalidateIdent(stmt.X)
+		}
+
+	case *ast.IfStmt:
+		// Walk the then and else branches from independent copies of the
+		// pre-branch narrowing, then invalidate anything mutated in
+		// either branch for code after the if:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       if cond {
+		//           x = 42
+		//       } else {
+		//           _ = x.(string) // safe: x = 42 did not run here
+		//       }
+		//       _ = x.(string)     // unchecked: x may now be 42
+		//   }
+		if len(v.narrowed) > 0 {
+			if stmt.Init != nil {
+				ast.Walk(v, stmt.Init)
+			}
+			ast.Walk(v, stmt.Cond)
+			saved := maps.Clone(v.narrowed)
+			ast.Walk(v, stmt.Body)
+			if stmt.Else != nil {
+				v.narrowed = maps.Clone(saved)
+				ast.Walk(v, stmt.Else)
+			}
+			v.narrowed = saved
+			v.invalidateMutatedIn(stmt.Body)
+			v.invalidateMutatedIn(stmt.Else)
+			return nil
+		}
+
+	case *ast.SwitchStmt:
+		// Each expression-switch case runs independently unless a case
+		// falls through into the next one:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       switch n {
+		//       case 1:
+		//           x = 42
+		//       case 2:
+		//           _ = x.(string) // safe (no fallthrough from case 1)
+		//       }
+		//       _ = x.(string)     // unchecked after switch
+		//   }
+		if len(v.narrowed) > 0 {
+			if stmt.Init != nil {
+				ast.Walk(v, stmt.Init)
+			}
+			if stmt.Tag != nil {
+				ast.Walk(v, stmt.Tag)
+			}
+			saved := maps.Clone(v.narrowed)
+			if stmt.Body != nil {
+				if containsFallthrough(stmt.Body) {
+					v.invalidateMutatedIn(stmt.Body)
+					ast.Walk(v, stmt.Body)
+				} else {
+					for _, s := range stmt.Body.List {
+						if cc, ok := s.(*ast.CaseClause); ok {
+							v.narrowed = maps.Clone(saved)
+							for _, e := range cc.List {
+								ast.Walk(v, e)
+							}
+							for _, bs := range cc.Body {
+								ast.Walk(v, bs)
+							}
+						} else {
+							ast.Walk(v, s)
+						}
+					}
+				}
+				v.narrowed = saved
+				v.invalidateMutatedIn(stmt.Body)
+			}
+			return nil
+		}
+
+	case *ast.SelectStmt:
+		// Each select communication clause runs independently, and any
+		// variable mutated in any clause is invalidated after the select:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       select {
+		//       case x = <-ch:
+		//       default:
+		//           _ = x.(string) // safe in this clause
+		//       }
+		//       _ = x.(string)     // unchecked after select
+		//   }
+		if len(v.narrowed) > 0 {
+			saved := maps.Clone(v.narrowed)
+			if stmt.Body != nil {
+				for _, s := range stmt.Body.List {
+					if cc, ok := s.(*ast.CommClause); ok {
+						v.narrowed = maps.Clone(saved)
+						if cc.Comm != nil {
+							ast.Walk(v, cc.Comm)
+						}
+						for _, bs := range cc.Body {
+							ast.Walk(v, bs)
+						}
+					} else {
+						ast.Walk(v, s)
+					}
+				}
+				v.narrowed = saved
+				v.invalidateMutatedIn(stmt.Body)
+			}
+			return nil
+		}
+
+	case *ast.ForStmt:
+		// Invalidate variables mutated anywhere in Cond, Post, or Body
+		// before walking them, because later loop iterations execute
+		// after mutations at the bottom of an earlier iteration:
+		//
+		//   switch x.(type) {
+		//   case string:
+		//       for i := 0; i < 2; i++ {
+		//           _ = x.(string) // unchecked: x is 42 on iteration 2
+		//           x = 42
+		//       }
+		//   }
+		if len(v.narrowed) > 0 {
+			if stmt.Init != nil {
+				ast.Walk(v, stmt.Init)
+			}
+			v.invalidateMutatedIn(stmt.Cond)
+			v.invalidateMutatedIn(stmt.Post)
+			v.invalidateMutatedIn(stmt.Body)
+			if stmt.Cond != nil {
+				ast.Walk(v, stmt.Cond)
+			}
+			if stmt.Post != nil {
+				ast.Walk(v, stmt.Post)
+			}
+			if stmt.Body != nil {
+				ast.Walk(v, stmt.Body)
+			}
 			return nil
 		}
 
@@ -579,6 +843,26 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 
 	case *ast.RangeStmt:
 		v.checkRangeStmt(stmt)
+		// A range loop assigns to Key and Value on each iteration (e.g.
+		// "for x = range vals") and its body can mutate narrowed vars on
+		// iteration 1 before iteration 2 runs, so invalidate both before
+		// walking the loop body.
+		if len(v.narrowed) > 0 {
+			ast.Walk(v, stmt.X)
+			v.invalidateIdent(stmt.Key)
+			v.invalidateIdent(stmt.Value)
+			v.invalidateMutatedIn(stmt.Body)
+			if stmt.Key != nil {
+				ast.Walk(v, stmt.Key)
+			}
+			if stmt.Value != nil {
+				ast.Walk(v, stmt.Value)
+			}
+			if stmt.Body != nil {
+				ast.Walk(v, stmt.Body)
+			}
+			return nil
+		}
 
 	default:
 	}
@@ -619,7 +903,9 @@ func (v *visitor) checkAssignment(lhs, rhs []ast.Expr) (followed bool) {
 			}
 			if len(lhs) < 2 {
 				// assertion result not read
-				v.addErrorAtPosition(expr.Pos(), nil)
+				if !v.isGuaranteedTypeAssert(expr) {
+					v.addErrorAtPosition(expr.Pos(), nil)
+				}
 			} else if v.checkBlankAssignments && isBlankIdent(lhs[1]) {
 				// assertion result ignored
 				v.addErrorAtPosition(lhs[1].Pos(), nil)
@@ -674,7 +960,386 @@ func (v *visitor) checkAssertExpr(expr *ast.TypeAssertExpr) {
 		// type switch
 		return
 	}
+	if v.isGuaranteedTypeAssert(expr) {
+		return
+	}
 	v.addErrorAtPosition(expr.Pos(), nil)
+}
+
+// walkFuncBody saves and clears the visitor's per-function narrowing state
+// before walking body, then restores the enclosing function's state.
+//
+// Resetting narrowed prevents narrowing in an outer function from leaking into
+// a nested function literal that may run later:
+//
+//	switch x.(type) {
+//	case string:
+//	    go func() { _ = x.(string) }() // x may be reassigned before goroutine runs
+//	}
+//	x = 42
+func (v *visitor) walkFuncBody(fn ast.Node, body *ast.BlockStmt) {
+	prevFn := v.currentFn
+	prevReady := v.closureInfoReady
+	prevClosureMutated := v.closureMutated
+	prevNarrowed := v.narrowed
+
+	v.currentFn = fn
+	v.closureInfoReady = false
+	v.closureMutated = nil
+	v.narrowed = nil
+
+	ast.Walk(v, body)
+
+	v.currentFn = prevFn
+	v.closureInfoReady = prevReady
+	v.closureMutated = prevClosureMutated
+	v.narrowed = prevNarrowed
+}
+
+// ensureClosureInfo lazily scans nested function literals in currentFn once to
+// find local variables that a closure can mutate or take the address of. Such
+// variables cannot safely stay narrowed across calls:
+//
+//	var x any = "hello"
+//	reset := func() { x = 42 }
+//	switch x.(type) {
+//	case string:
+//	    reset()        // mutates x even though x does not appear at the call site
+//	    _ = x.(string) // unchecked
+//	}
+func (v *visitor) ensureClosureInfo() {
+	if v.closureInfoReady {
+		return
+	}
+	v.closureInfoReady = true
+	v.closureMutated = make(map[*types.Var]bool)
+	if v.currentFn == nil || v.typesInfo == nil {
+		return
+	}
+	var body *ast.BlockStmt
+	switch fn := v.currentFn.(type) {
+	case *ast.FuncDecl:
+		body = fn.Body
+	case *ast.FuncLit:
+		body = fn.Body
+	}
+	if body == nil {
+		return
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		if fl, ok := n.(*ast.FuncLit); ok {
+			v.collectMutatedVars(fl.Body, v.closureMutated)
+			return false
+		}
+		return true
+	})
+}
+
+// typeSwitchGuardVar returns the local variable switched on by stmt if it is
+// safe to track across case clauses, or nil otherwise.
+//
+// It handles both guard forms:
+//   - "switch x.(type)"      (*ast.ExprStmt)
+//   - "switch y := x.(type)" (*ast.AssignStmt)
+//
+// Package-level globals ("var g any"), variables captured from an outer
+// function, and variables mutated by a closure in currentFn return nil because
+// arbitrary function calls or other goroutines could change their dynamic type
+// mid-case.
+func (v *visitor) typeSwitchGuardVar(stmt *ast.TypeSwitchStmt) *types.Var {
+	if v.currentFn == nil || v.typesInfo == nil || stmt.Assign == nil {
+		return nil
+	}
+	var ta *ast.TypeAssertExpr
+	switch assign := stmt.Assign.(type) {
+	case *ast.ExprStmt:
+		ta, _ = ast.Unparen(assign.X).(*ast.TypeAssertExpr)
+	case *ast.AssignStmt:
+		if len(assign.Rhs) == 1 {
+			ta, _ = ast.Unparen(assign.Rhs[0]).(*ast.TypeAssertExpr)
+		}
+	}
+	if ta == nil || ta.Type != nil {
+		return nil
+	}
+	ident, ok := ast.Unparen(ta.X).(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	vObj, ok := v.typesInfo.Uses[ident].(*types.Var)
+	if !ok || vObj == nil {
+		return nil
+	}
+	// Restrict to variables declared in the immediately enclosing function
+	// (receiver, parameters, results, or locals).
+	if vObj.Pos() < v.currentFn.Pos() || vObj.Pos() > v.currentFn.End() {
+		return nil
+	}
+	v.ensureClosureInfo()
+	if v.closureMutated[vObj] {
+		return nil
+	}
+	return vObj
+}
+
+// walkTypeSwitchStmt walks a type switch while recording per-case type
+// constraints on the switched variable:
+//
+//	switch x.(type) {
+//	case string:
+//	    _ = x.(string)            // narrowed[x] includes [string] -> safe
+//	case *bytes.Buffer, *os.File:
+//	    _ = x.(io.Reader)         // narrowed[x] includes [*bytes.Buffer, *os.File] -> safe
+//	case nil:
+//	    _ = x.(any)               // nil case does not narrow x -> unchecked
+//	default:
+//	    _ = x.(string)            // default has empty cc.List -> unchecked
+//	}
+func (v *visitor) walkTypeSwitchStmt(stmt *ast.TypeSwitchStmt) {
+	if stmt.Init != nil {
+		ast.Walk(v, stmt.Init)
+	}
+	if stmt.Assign != nil {
+		ast.Walk(v, stmt.Assign)
+	}
+	if stmt.Body == nil {
+		return
+	}
+
+	afterHeader := maps.Clone(v.narrowed)
+	guardVar := v.typeSwitchGuardVar(stmt)
+
+	for _, s := range stmt.Body.List {
+		cc, ok := s.(*ast.CaseClause)
+		if !ok {
+			ast.Walk(v, s)
+			continue
+		}
+
+		v.narrowed = maps.Clone(afterHeader)
+		for _, e := range cc.List {
+			ast.Walk(v, e)
+		}
+
+		if guardVar != nil && len(cc.List) > 0 {
+			caseTypes := make([]types.Type, 0, len(cc.List))
+			for _, ce := range cc.List {
+				tv, ok := v.typesInfo.Types[ce]
+				// Exclude "case nil:", whose dynamic value is nil and panics on x.(T).
+				if !ok || tv.IsNil() || tv.Type == nil || tv.Type == types.Typ[types.UntypedNil] {
+					caseTypes = nil
+					break
+				}
+				caseTypes = append(caseTypes, tv.Type)
+			}
+			if len(caseTypes) > 0 {
+				if v.narrowed == nil {
+					v.narrowed = make(map[*types.Var][][]types.Type)
+				}
+				v.narrowed[guardVar] = append(slices.Clone(v.narrowed[guardVar]), caseTypes)
+			}
+		}
+
+		// If the case contains a goto, a backward jump could reach an
+		// assertion after mutating a narrowed variable later in the case:
+		//
+		//   retry:
+		//       _ = x.(string) // unchecked: x is 42 after goto retry
+		//       x = 42
+		//       goto retry
+		if len(v.narrowed) > 0 && containsGoto(cc) {
+			v.invalidateMutatedIn(cc)
+		}
+
+		for _, bs := range cc.Body {
+			ast.Walk(v, bs)
+		}
+	}
+
+	v.narrowed = afterHeader
+	v.invalidateMutatedIn(stmt.Body)
+}
+
+// isGuaranteedTypeAssert reports whether expr (a single-value assertion like
+// "x.(T)") is guaranteed not to panic by an active enclosing type-switch case.
+//
+// At least one active case on x must guarantee T for every type in that case's
+// type list. For example:
+//   - "case string:" guarantees "x.(string)"
+//   - "case *bytes.Buffer, *strings.Reader:" guarantees "x.(io.Reader)",
+//     but NOT "x.(*bytes.Buffer)" because x may hold *strings.Reader.
+func (v *visitor) isGuaranteedTypeAssert(expr *ast.TypeAssertExpr) bool {
+	if len(v.narrowed) == 0 || v.typesInfo == nil || expr.Type == nil {
+		return false
+	}
+	ident, ok := ast.Unparen(expr.X).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	vObj, ok := v.typesInfo.Uses[ident].(*types.Var)
+	if !ok {
+		return false
+	}
+	constraints := v.narrowed[vObj]
+	if len(constraints) == 0 {
+		return false
+	}
+	assertedType := v.typesInfo.TypeOf(expr.Type)
+	if assertedType == nil {
+		return false
+	}
+	for _, caseTypes := range constraints {
+		allMatch := len(caseTypes) > 0
+		for _, ct := range caseTypes {
+			if !typeSwitchCaseGuarantees(ct, assertedType) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
+			return true
+		}
+	}
+	return false
+}
+
+// typeSwitchCaseGuarantees reports whether a non-nil value that matched
+// caseType in a type switch is guaranteed to succeed in an assertion to
+// assertedType without panicking:
+//   - Identical types (after unaliasing): "case string:" -> "x.(string)" or
+//     "type S = string; x.(S)", whereas "type MySlice []int; case MySlice:"
+//     does NOT guarantee "x.([]int)" because defined types are distinct.
+//   - Interface satisfaction: "case *bytes.Buffer:" -> "x.(io.Reader)"
+//     (types.Implements), whereas "case io.Reader:" does NOT guarantee
+//     "x.(*bytes.Buffer)" because the concrete type may differ, and assertions
+//     to a type parameter T require exact type identity with caseType.
+func typeSwitchCaseGuarantees(caseType, assertedType types.Type) bool {
+	if caseType == nil || assertedType == nil || caseType == types.Typ[types.UntypedNil] {
+		return false
+	}
+	caseType = types.Unalias(caseType)
+	assertedType = types.Unalias(assertedType)
+	if types.Identical(caseType, assertedType) {
+		return true
+	}
+	if _, isTypeParam := assertedType.(*types.TypeParam); isTypeParam {
+		return false
+	}
+	if iface, ok := assertedType.Underlying().(*types.Interface); ok {
+		return types.Implements(caseType, iface)
+	}
+	return false
+}
+
+// markIdentMutated records the *types.Var referenced by expr in out when expr
+// is an identifier (after stripping parentheses).
+func (v *visitor) markIdentMutated(expr ast.Expr, out map[*types.Var]bool) {
+	if expr == nil || v.typesInfo == nil {
+		return
+	}
+	if id, ok := ast.Unparen(expr).(*ast.Ident); ok {
+		if vObj, ok := v.typesInfo.ObjectOf(id).(*types.Var); ok {
+			out[vObj] = true
+		}
+	}
+}
+
+// invalidateIdent removes any active type-switch narrowing for the variable
+// referenced by expr (for example after "x = 42" or "&x").
+func (v *visitor) invalidateIdent(expr ast.Expr) {
+	if len(v.narrowed) == 0 || expr == nil || v.typesInfo == nil {
+		return
+	}
+	if id, ok := ast.Unparen(expr).(*ast.Ident); ok {
+		if vObj, ok := v.typesInfo.ObjectOf(id).(*types.Var); ok {
+			delete(v.narrowed, vObj)
+		}
+	}
+}
+
+// collectMutatedVars records all variables in node that may be modified by
+// assignment ("x = v", "x := v" redeclaration), range iteration
+// ("for x = range s"), increment/decrement ("x++"), or address-taking ("&x").
+func (v *visitor) collectMutatedVars(node ast.Node, out map[*types.Var]bool) {
+	if node == nil || v.typesInfo == nil {
+		return
+	}
+	ast.Inspect(node, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.AssignStmt:
+			for _, lhs := range s.Lhs {
+				v.markIdentMutated(lhs, out)
+			}
+		case *ast.RangeStmt:
+			v.markIdentMutated(s.Key, out)
+			v.markIdentMutated(s.Value, out)
+		case *ast.IncDecStmt:
+			v.markIdentMutated(s.X, out)
+		case *ast.UnaryExpr:
+			if s.Op == token.AND {
+				v.markIdentMutated(s.X, out)
+			}
+		}
+		return true
+	})
+}
+
+// invalidateMutatedIn removes active type-switch narrowing for every variable
+// that may be mutated anywhere within node.
+func (v *visitor) invalidateMutatedIn(node ast.Node) {
+	if len(v.narrowed) == 0 || node == nil {
+		return
+	}
+	mutated := make(map[*types.Var]bool)
+	v.collectMutatedVars(node, mutated)
+	for vObj := range mutated {
+		delete(v.narrowed, vObj)
+	}
+}
+
+// containsGoto reports whether node contains a "goto" statement outside any
+// nested function literal.
+func containsGoto(node ast.Node) bool {
+	found := false
+	ast.Inspect(node, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
+		if br, ok := n.(*ast.BranchStmt); ok && br.Tok == token.GOTO {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// containsFallthrough reports whether any top-level case clause in a switch
+// body ends with a "fallthrough" statement:
+//
+//	switch n {
+//	case 1:
+//	    x = 42
+//	    fallthrough
+//	case 2:
+//	    _ = x.(string) // x may be 42 via fallthrough from case 1
+//	}
+func containsFallthrough(body *ast.BlockStmt) bool {
+	for _, s := range body.List {
+		cc, ok := s.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		for _, bs := range cc.Body {
+			if br, ok := bs.(*ast.BranchStmt); ok && br.Tok == token.FALLTHROUGH {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // unwrapCall returns the call expression within expr after removing parentheses, or nil if expr is not a call.
