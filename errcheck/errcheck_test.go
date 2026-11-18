@@ -546,3 +546,184 @@ func TestUnique(t *testing.T) {
 		t.Errorf("Unique() modified its receiver: %v, want %v", r.UncheckedErrors, orig)
 	}
 }
+
+func TestTypeSwitchAssertions(t *testing.T) {
+	const testGoMod = `module typeswitchtest
+
+go 1.26
+`
+	const testMain = `package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strings"
+)
+
+type MySlice []int
+type StrAlias = string
+
+var globalVal any
+
+func takePtr(p *any) {}
+
+func safeAssertions(a any, b any, cond bool, n int) {
+	takePtr(&a)
+
+	switch a.(type) {
+	case string:
+		fmt.Println(a.(string))
+		s := a.(string)
+		s2, k := a.(string), 1
+		var s3 = (a).(string)
+		var s4 StrAlias = a.(StrAlias)
+		if cond {
+			a = 42
+		} else {
+			_ = a.(string)
+		}
+		_, _, _, _, _ = s, s2, k, s3, s4
+	case *bytes.Buffer:
+		var r io.Reader = a.(io.Reader)
+		_ = r
+	case *strings.Reader, io.ReadCloser:
+		var r io.Reader = a.(io.Reader)
+		_ = r
+	case int:
+		switch n {
+		case 1:
+			a = 99
+		case 2:
+			_ = a.(int)
+		}
+	case float64:
+		switch b.(type) {
+		case string:
+			fmt.Println(a.(float64), b.(string))
+		}
+		a = a.(float64)
+	}
+}
+
+func unsafeAssertions(a any, cond bool, n int) {
+	// Multi-type case, nil case, and default cannot guarantee string.
+	switch a.(type) {
+	case string, int:
+		_ = a.(string) // ASSERT
+	case nil:
+		_ = a.(any) // ASSERT
+	default:
+		_ = a.(string) // ASSERT
+	}
+
+	// Interface narrowing and defined-vs-underlying mismatch can panic.
+	switch a.(type) {
+	case io.Reader:
+		_ = a.(*bytes.Buffer) // ASSERT
+	case MySlice:
+		_ = a.([]int) // ASSERT
+	}
+
+	// Direct reassignment before assertion.
+	switch a.(type) {
+	case string:
+		_ = a.(string)
+		a = 42
+		_ = a.(string) // ASSERT
+	}
+
+	// Branch reassignment invalidates after merge.
+	switch a.(type) {
+	case string:
+		if cond {
+			a = 42
+		}
+		_ = a.(string) // ASSERT
+	}
+
+	// Switch fallthrough from a mutating case invalidates the next case.
+	switch a.(type) {
+	case string:
+		switch n {
+		case 1:
+			a = 42
+			fallthrough
+		case 2:
+			_ = a.(string) // ASSERT
+		}
+	}
+
+	// Loop body reassignment invalidates earlier line in loop on next iteration.
+	switch a.(type) {
+	case string:
+		for j := 0; j < 2; j++ {
+			_ = a.(string) // ASSERT
+			a = 42
+		}
+	}
+
+	// Backward goto can reach an earlier assertion after mutation.
+	switch a.(type) {
+	case string:
+		done := false
+	retry:
+		_ = a.(string) // ASSERT
+		if !done {
+			done = true
+			a = 42
+			goto retry
+		}
+	}
+
+	// Address-taken inside case can mutate a.
+	switch a.(type) {
+	case string:
+		takePtr(&a)
+		_ = a.(string) // ASSERT
+	}
+
+	// Shadowed inner variable is not the narrowed variable.
+	switch a.(type) {
+	case string:
+		var a any = 42
+		_ = a.(string) // ASSERT
+	}
+
+	// Deferred closure executes after switch when a has changed.
+	switch a.(type) {
+	case string:
+		defer func() {
+			_ = a.(string) // ASSERT
+		}()
+	}
+	a = 42
+
+	// Package-level variable can be mutated externally.
+	switch globalVal.(type) {
+	case string:
+		_ = globalVal.(string) // ASSERT
+	}
+
+	// Variable mutated by a closure in the same function.
+	var c any = "ok"
+	reset := func() { c = 42 }
+	switch c.(type) {
+	case string:
+		reset()
+		_ = c.(string) // ASSERT
+	}
+}
+
+func main() {}
+`
+	useTempModule(t, map[string]string{
+		"go.mod":  testGoMod,
+		"main.go": testMain,
+	})
+
+	var checker Checker
+	checker.Exclusions.TypeAssertions = false
+	checker.Exclusions.Symbols = append(checker.Exclusions.Symbols, DefaultExcludedSymbols...)
+	wantMarked(t, &checker, "typeswitchtest")
+}
